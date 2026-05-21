@@ -1,0 +1,345 @@
+'use client'
+
+import { useRef } from 'react'
+import { motion, useScroll, useTransform } from 'framer-motion'
+import Image from 'next/image'
+import Link from 'next/link'
+import Navbar from '@/components/Navbar'
+import ProductCard from '@/components/ProductCard'
+import Footer from '@/components/Footer'
+import { useProductStore, Category } from '@/lib/store'
+import { getWhatsAppLink, WA_DISPLAY } from '@/lib/whatsapp'
+
+const MARQUEE_ITEMS = [
+  'BOOTS', 'JERSEYS', 'ESSENTIALS', 'PREMIUM', 'DROPS', 'CULTURE', 'MAD BALLERS', 'BALLER ZONE',
+]
+
+const CATEGORY_META: Record<Category, { description: string; href: string }> = {
+  Boots: {
+    description: 'Pro-grade football boots from top brands. Built for speed, precision, and dominance.',
+    href: '/collections?cat=Boots',
+  },
+  Jerseys: {
+    description: 'Authentic club and national jerseys — wear your allegiance with style.',
+    href: '/collections?cat=Jerseys',
+  },
+  Essentials: {
+    description: 'Grip socks, shin guards, bags, and more — everything a true baller needs.',
+    href: '/collections?cat=Essentials',
+  },
+}
+
+const WA_ICON = (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 flex-shrink-0">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.558 4.116 1.535 5.845L.057 23.95l6.244-1.637A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 01-4.99-1.366l-.358-.212-3.708.973.989-3.616-.232-.372A9.818 9.818 0 0112 2.182c5.423 0 9.818 4.395 9.818 9.818 0 5.422-4.395 9.818-9.818 9.818z" />
+  </svg>
+)
+
+export default function HomePage() {
+  const heroRef = useRef<HTMLDivElement>(null)
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
+  const bgY = useTransform(scrollYProgress, [0, 1], ['0%', '40%'])
+
+  const products       = useProductStore((s) => s.products)
+  const loading        = useProductStore((s) => s.loading)
+  const categoryImages = useProductStore((s) => s.categoryImages)
+
+  const featured = products.filter((p) => p.featured).slice(0, 4)
+
+  const categoryCards = (['Boots', 'Jerseys', 'Essentials'] as Category[]).map((name) => ({
+    name,
+    image: categoryImages[name],
+    ...CATEGORY_META[name],
+  }))
+
+  return (
+    <main className="min-h-screen bg-[#0a0a0a]">
+      <Navbar />
+
+      {/* ── HERO ── */}
+      <section
+        ref={heroRef}
+        className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
+      >
+        <motion.div className="absolute inset-0" style={{ y: bgY }}>
+          <Image
+            src="https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1800&q=80"
+            alt="Football stadium"
+            fill
+            priority
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/60 to-[#0a0a0a]" />
+        </motion.div>
+
+        <div className="relative z-10 flex flex-col items-center text-center px-4">
+          {/* Logo */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            className="relative w-28 h-28 sm:w-40 sm:h-40 rounded-full overflow-hidden animate-glow-pulse mb-8"
+          >
+            <Image
+              src="/logo.png"
+              alt="MAD BALLERS"
+              fill
+              className="object-contain"
+              priority
+            />
+          </motion.div>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
+            className="chrome-text leading-none"
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(56px, 12vw, 160px)', letterSpacing: '0.08em' }}
+          >
+            MAD BALLERS
+          </motion.h1>
+
+          <motion.div
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 0.7, delay: 0.5 }}
+            className="w-40 h-px bg-gradient-to-r from-transparent via-chrome-300 to-transparent my-4"
+          />
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.55 }}
+            className="chrome-text leading-none"
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(22px, 4vw, 52px)', letterSpacing: '0.3em' }}
+          >
+            BALLER ZONE
+          </motion.p>
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.7 }}
+            className="text-chrome-400 text-sm sm:text-base mt-3 mb-8"
+            style={{ fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.18em' }}
+          >
+            Premium Football Culture — Boots · Jerseys · Essentials
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.85 }}
+            className="flex flex-col sm:flex-row gap-4"
+          >
+            <Link
+              href="/collections"
+              className="inline-flex items-center justify-center border border-chrome-400/50 hover:border-chrome-200 text-chrome-200 hover:text-white px-8 py-3 tracking-widest text-sm uppercase transition-all duration-200 hover:bg-white/5"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
+              BROWSE DROPS
+            </Link>
+            <a
+              href={getWhatsAppLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="wa-btn inline-flex items-center justify-center gap-2 text-white px-8 py-3 tracking-widest text-sm uppercase font-semibold rounded"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
+              {WA_ICON} ORDER NOW
+            </a>
+          </motion.div>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5, duration: 1 }}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+        >
+          <span className="text-chrome-600 text-xs tracking-[0.3em]" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>SCROLL</span>
+          <motion.div
+            animate={{ y: [0, 8, 0] }}
+            transition={{ repeat: Infinity, duration: 1.6 }}
+            className="w-px h-8 bg-gradient-to-b from-chrome-400 to-transparent"
+          />
+        </motion.div>
+      </section>
+
+      {/* ── MARQUEE ── */}
+      <section className="relative overflow-hidden border-t border-b border-white/[0.06] bg-[#0d0d0d] py-4">
+        <div className="marquee-track">
+          {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((item, i) => (
+            <span key={i} className="inline-flex items-center gap-4 pr-4" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+              <span className="text-chrome-400 tracking-[0.2em] text-lg whitespace-nowrap">{item}</span>
+              <span className="text-chrome-600 text-xs">◆</span>
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {/* ── FEATURED DROPS ── */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-12"
+        >
+          <span className="text-chrome-600 text-xs tracking-[0.35em] uppercase block mb-3" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+            — LATEST ARRIVALS —
+          </span>
+          <h2 className="chrome-text" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(40px, 6vw, 80px)', letterSpacing: '0.06em' }}>
+            FEATURED DROPS
+          </h2>
+        </motion.div>
+
+        {loading ? (
+          <div className="text-center text-chrome-600 text-sm tracking-widest animate-pulse py-16" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+            LOADING FROM FIREBASE...
+          </div>
+        ) : featured.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-chrome-600 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO FEATURED PRODUCTS YET</p>
+            <p className="text-chrome-700 text-sm mt-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>Star a product in the admin to feature it here</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {featured.map((product, i) => (
+              <ProductCard key={product.id} product={product} index={i} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ── CATEGORIES ── */}
+      <section className="bg-[#0d0d0d] py-16 sm:py-20 border-t border-white/[0.04]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-12"
+          >
+            <span className="text-chrome-600 text-xs tracking-[0.35em] uppercase block mb-3" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+              — SHOP BY TYPE —
+            </span>
+            <h2 className="chrome-text" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(40px, 6vw, 80px)', letterSpacing: '0.06em' }}>
+              CATEGORIES
+            </h2>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+            {categoryCards.map((cat, i) => (
+              <motion.div
+                key={cat.name}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.55, delay: i * 0.1 }}
+                whileHover={{ scale: 1.02 }}
+                className="relative overflow-hidden rounded-xl group cursor-pointer"
+                style={{ aspectRatio: '3/4' }}
+              >
+                <Image
+                  src={cat.image}
+                  alt={cat.name}
+                  fill
+                  className="object-cover transition-transform duration-700 group-hover:scale-110"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+                  <h3 className="chrome-text mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(32px, 4vw, 52px)', letterSpacing: '0.08em' }}>
+                    {cat.name}
+                  </h3>
+                  <p className="text-chrome-400 text-sm mb-4 leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                    {cat.description}
+                  </p>
+                  <Link href={cat.href} className="text-white text-sm tracking-widest animated-underline font-semibold" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                    EXPLORE →
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHATSAPP CTA ── */}
+      <section className="relative overflow-hidden bg-[#080808] py-20 sm:py-24 border-t border-white/[0.04]">
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(37,211,102,0.07) 0%, transparent 70%)' }} />
+
+        <div className="relative z-10 max-w-3xl mx-auto px-4 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="inline-flex items-center gap-2 glass-card rounded-full px-5 py-2 mb-8"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+            </span>
+            <span className="text-green-400 text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+              WE&apos;RE AVAILABLE NOW
+            </span>
+          </motion.div>
+
+          <motion.h2
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.7, delay: 0.1 }}
+            className="chrome-text leading-none mb-6"
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(48px, 9vw, 120px)', letterSpacing: '0.06em' }}
+          >
+            READY TO ORDER?
+          </motion.h2>
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="text-chrome-400 text-base sm:text-lg leading-relaxed mb-10 max-w-xl mx-auto"
+            style={{ fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.05em' }}
+          >
+            Tap the button and our team will guide you through every drop — from boots to jerseys.
+            Fast replies, genuine gear, direct delivery.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="flex flex-col items-center gap-5"
+          >
+            <a
+              href={getWhatsAppLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="wa-btn inline-flex items-center gap-3 text-white text-base sm:text-lg font-semibold tracking-widest uppercase rounded-xl px-8 sm:px-10 py-4"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
+              {WA_ICON} CHAT &amp; ORDER
+            </a>
+            <a
+              href={`tel:${WA_DISPLAY.replace(/\s/g, '')}`}
+              className="text-green-400 text-xl font-semibold tracking-wider hover:text-green-300 transition-colors"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
+              {WA_DISPLAY}
+            </a>
+          </motion.div>
+        </div>
+      </section>
+
+      <Footer />
+    </main>
+  )
+}
