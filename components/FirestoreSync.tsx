@@ -5,6 +5,7 @@ import {
   collection,
   onSnapshot,
   addDoc,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -21,25 +22,25 @@ export default function FirestoreSync() {
   useEffect(() => {
     setLoading(true)
 
-    // ── One-time seed (only if never seeded before) ──
-    // Uses settings/seeded flag so deleting all products won't re-seed.
+    // ── One-time migration to real products (v2) ──────
+    // v2: wipes old placeholder products and seeds the 28 real boots.
+    // Once settings/seeded_v2 exists this block is never touched again.
     const seedIfNeeded = async () => {
       try {
-        const seededSnap = await getDoc(doc(db, 'settings', 'seeded'))
-        if (seededSnap.exists()) return // already seeded — don't touch
+        const seededSnap = await getDoc(doc(db, 'settings', 'seeded_v2'))
+        if (seededSnap.exists()) return // already on v2 — skip
 
+        // Delete every existing product (old placeholders)
         const existing = await getDocs(collection(db, 'products'))
-        if (!existing.empty) {
-          // Products exist but flag is missing — just write the flag
-          await setDoc(doc(db, 'settings', 'seeded'), { at: new Date().toISOString() })
-          return
+        for (const d of existing.docs) {
+          await deleteDoc(doc(db, 'products', d.id))
         }
 
-        // Fresh database — add sample products
+        // Seed all 28 real products
         for (const p of SAMPLE_PRODUCTS) {
           await addDoc(collection(db, 'products'), p)
         }
-        await setDoc(doc(db, 'settings', 'seeded'), { at: new Date().toISOString() })
+        await setDoc(doc(db, 'settings', 'seeded_v2'), { at: new Date().toISOString() })
       } catch (err) {
         console.warn('Seed skipped (Firestore rules may be locked):', err)
       }
