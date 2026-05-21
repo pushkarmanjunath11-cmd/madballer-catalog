@@ -6,10 +6,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
-import { useProductStore, Category, Product } from '@/lib/store'
+import { useProductStore, Product } from '@/lib/store'
 
 const ADMIN_PASSWORD = 'madballers2024'
-const CATEGORIES: Category[] = ['Boots', 'Jerseys', 'Essentials']
 
 type Tab = 'upload' | 'manage' | 'categories'
 
@@ -49,7 +48,6 @@ export default function AdminPage() {
 
   // ── Upload product form ───────────────────────────
   const [name, setName]         = useState('')
-  const [category, setCategory] = useState<Category>('Boots')
   const [imageMode, setImageMode] = useState<'url' | 'file'>('url')
   const [imageUrl, setImageUrl] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -64,19 +62,15 @@ export default function AdminPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState('')
 
-  // ── Category images ───────────────────────────────
-  const [catUrls, setCatUrls] = useState<Record<Category, string>>({ Boots: '', Jerseys: '', Essentials: '' })
-  const [catFiles, setCatFiles] = useState<Record<Category, File | null>>({ Boots: null, Jerseys: null, Essentials: null })
-  const [catPreviews, setCatPreviews] = useState<Record<Category, string>>({ Boots: '', Jerseys: '', Essentials: '' })
-  const [catSaving, setCatSaving] = useState<Record<Category, boolean>>({ Boots: false, Jerseys: false, Essentials: false })
-  const [catSuccess, setCatSuccess] = useState<Record<Category, boolean>>({ Boots: false, Jerseys: false, Essentials: false })
-  const catFileRefs = { Boots: useRef<HTMLInputElement>(null), Jerseys: useRef<HTMLInputElement>(null), Essentials: useRef<HTMLInputElement>(null) }
+  // ── Category images (Boots only) ─────────────────
+  const [catUrl, setCatUrl] = useState('')
+  const [catFile, setCatFile] = useState<File | null>(null)
+  const [catPreview, setCatPreview] = useState('')
+  const [catSaving, setCatSaving] = useState(false)
+  const [catSuccess, setCatSuccess] = useState(false)
+  const catFileRef = useRef<HTMLInputElement>(null)
 
   const { products, loading, categoryImages, addProduct, removeProduct, toggleFeatured, updateCategoryImage } = useProductStore()
-
-  // ── Helpers ───────────────────────────────────────
-  const badgeClass = (cat: Category) =>
-    cat === 'Boots' ? 'badge-boots' : cat === 'Jerseys' ? 'badge-jerseys' : 'badge-essentials'
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) { setAuthed(true); setWrongPw(false) }
@@ -98,7 +92,7 @@ export default function AdminPage() {
     try {
       let finalUrl = imageUrl
       if (imageMode === 'file' && imageFile) finalUrl = await uploadToStorage(imageFile, setUploadPct)
-      await addProduct({ name: name.trim(), category, imageUrl: finalUrl, featured: false })
+      await addProduct({ name: name.trim(), category: 'Boots', imageUrl: finalUrl, featured: false })
       setName(''); setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0)
       setUploadSuccess(true)
       setTimeout(() => setUploadSuccess(false), 3000)
@@ -120,35 +114,27 @@ export default function AdminPage() {
   }
 
   // ── Category image save ───────────────────────────
-  const handleSaveCatImage = async (cat: Category) => {
-    setCatSaving((p) => ({ ...p, [cat]: true }))
+  const handleSaveCatImage = async () => {
+    setCatSaving(true)
     try {
-      let url = catUrls[cat] || categoryImages[cat]
-      const file = catFiles[cat]
-      if (file) {
-        url = await uploadToStorage(file, () => {})
-        setCatPreviews((p) => ({ ...p, [cat]: url }))
-        setCatFiles((p) => ({ ...p, [cat]: null }))
+      let url = catUrl || categoryImages['Boots']
+      if (catFile) {
+        url = await uploadToStorage(catFile, () => {})
+        setCatPreview(url)
+        setCatFile(null)
       }
-      await updateCategoryImage(cat, url)
-      setCatSuccess((p) => ({ ...p, [cat]: true }))
-      setTimeout(() => setCatSuccess((p) => ({ ...p, [cat]: false })), 3000)
+      await updateCategoryImage('Boots', url)
+      setCatSuccess(true)
+      setTimeout(() => setCatSuccess(false), 3000)
     } catch { /* silent */ }
-    finally { setCatSaving((p) => ({ ...p, [cat]: false })) }
+    finally { setCatSaving(false) }
   }
 
-  const handleCatFileChange = (cat: Category, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCatFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setCatFiles((p) => ({ ...p, [cat]: file }))
-    setCatPreviews((p) => ({ ...p, [cat]: URL.createObjectURL(file) }))
-  }
-
-  const counts = {
-    total: products.length,
-    boots: products.filter((p) => p.category === 'Boots').length,
-    jerseys: products.filter((p) => p.category === 'Jerseys').length,
-    essentials: products.filter((p) => p.category === 'Essentials').length,
+    setCatFile(file)
+    setCatPreview(URL.createObjectURL(file))
   }
 
   // ══════════════════════════════════════════════════
@@ -243,12 +229,10 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-10">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-10 max-w-xs">
           {[
-            { label: 'TOTAL', value: loading ? '…' : counts.total },
-            { label: 'BOOTS', value: loading ? '…' : counts.boots },
-            { label: 'JERSEYS', value: loading ? '…' : counts.jerseys },
-            { label: 'ESSENTIALS', value: loading ? '…' : counts.essentials },
+            { label: 'TOTAL PAIRS', value: loading ? '…' : products.length },
+            { label: 'FEATURED', value: loading ? '…' : products.filter((p) => p.featured).length },
           ].map((s) => (
             <div key={s.label} className="glass-card rounded-xl p-4 sm:p-5 text-center">
               <div className="chrome-text text-4xl sm:text-5xl leading-none mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{s.value}</div>
@@ -295,24 +279,12 @@ export default function AdminPage() {
             {/* Form */}
             <div className="glass-card rounded-2xl p-5 sm:p-8">
               <h2 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
-                ADD PRODUCT
+                ADD BOOTS
               </h2>
               <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 <div>
                   <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>PRODUCT NAME</label>
                   <input className="admin-input" placeholder="e.g. Phantom Elite FG" value={name} onChange={(e) => setName(e.target.value)} required />
-                </div>
-
-                <div>
-                  <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>CATEGORY</label>
-                  <div className="flex gap-2">
-                    {CATEGORIES.map((cat) => (
-                      <button key={cat} type="button" onClick={() => setCategory(cat)}
-                        className={`flex-1 py-2 text-xs sm:text-sm tracking-wider rounded-lg border transition-all ${category === cat ? 'bg-white text-black border-white font-semibold' : 'border-white/15 text-chrome-400 hover:border-white/30'}`}
-                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >{cat}</button>
-                    ))}
-                  </div>
                 </div>
 
                 <div>
@@ -376,11 +348,11 @@ export default function AdminPage() {
                 <div className="relative aspect-[4/3] bg-chrome-900">
                   {previewSrc
                     ? <Image src={previewSrc} alt="Preview" fill className="object-cover" unoptimized />
-                    : <div className="absolute inset-0 flex items-center justify-center text-chrome-700 text-4xl">⚽</div>
+                    : <div className="absolute inset-0 flex items-center justify-center text-chrome-700 text-4xl">👟</div>
                   }
                 </div>
                 <div className="p-4 space-y-2">
-                  <span className={badgeClass(category)}>{category}</span>
+                  <span className="badge-boots">Boots</span>
                   <p className="text-white text-xl" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em' }}>{name || 'Product Name'}</p>
                   <div className="wa-btn rounded-lg py-2 text-center text-white text-xs tracking-widest font-semibold" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>ORDER ON WHATSAPP</div>
                 </div>
@@ -418,7 +390,7 @@ export default function AdminPage() {
               </div>
             ) : products.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 gap-4">
-                <span className="text-5xl">⚽</span>
+                <span className="text-5xl">👟</span>
                 <p className="text-chrome-500 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO PRODUCTS YET</p>
                 <button onClick={() => setActiveTab('upload')} className="text-chrome-400 text-sm tracking-widest underline" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>Add your first product</button>
               </div>
@@ -429,7 +401,6 @@ export default function AdminPage() {
                     key={product.id}
                     product={product}
                     confirmDeleteId={confirmDeleteId}
-                    badgeClass={badgeClass}
                     onToggle={() => toggleFeatured(product.id)}
                     onAskDelete={() => { setConfirmDeleteId(product.id); setDeleteError('') }}
                     onConfirmDelete={() => handleDelete(product.id)}
@@ -445,72 +416,66 @@ export default function AdminPage() {
         {activeTab === 'categories' && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
             <p className="text-chrome-500 text-sm tracking-widest mb-6" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-              Update the hero images shown on the category cards on the homepage.
+              Update the hero image shown on the Boots section of the homepage.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-              {CATEGORIES.map((cat) => {
-                const currentImg = catPreviews[cat] || categoryImages[cat]
-                const fileRef = catFileRefs[cat]
-                return (
-                  <div key={cat} className="glass-card rounded-2xl overflow-hidden">
-                    {/* Current image preview */}
-                    <div className="relative aspect-[3/2]">
-                      <Image src={currentImg} alt={cat} fill className="object-cover" unoptimized />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                      <h3 className="absolute bottom-3 left-4 chrome-text text-2xl" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.1em' }}>{cat}</h3>
-                    </div>
+            <div className="max-w-sm">
+              <div className="glass-card rounded-2xl overflow-hidden">
+                {/* Current image preview */}
+                <div className="relative aspect-[3/2]">
+                  <Image src={catPreview || categoryImages['Boots']} alt="Boots" fill className="object-cover" unoptimized />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                  <h3 className="absolute bottom-3 left-4 chrome-text text-2xl" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.1em' }}>BOOTS</h3>
+                </div>
 
-                    <div className="p-4 space-y-3">
-                      {/* URL input */}
-                      <input
-                        className="admin-input text-sm"
-                        placeholder="Paste new image URL..."
-                        value={catUrls[cat]}
-                        onChange={(e) => {
-                          setCatUrls((p) => ({ ...p, [cat]: e.target.value }))
-                          if (e.target.value) setCatPreviews((p) => ({ ...p, [cat]: e.target.value }))
-                        }}
-                      />
+                <div className="p-4 space-y-3">
+                  {/* URL input */}
+                  <input
+                    className="admin-input text-sm"
+                    placeholder="Paste new image URL..."
+                    value={catUrl}
+                    onChange={(e) => {
+                      setCatUrl(e.target.value)
+                      if (e.target.value) setCatPreview(e.target.value)
+                    }}
+                  />
 
-                      {/* Or upload file */}
-                      <div>
-                        <input
-                          ref={fileRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleCatFileChange(cat, e)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fileRef.current?.click()}
-                          className="w-full border border-dashed border-white/15 rounded-lg py-2.5 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
-                          style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                        >
-                          {catFiles[cat] ? catFiles[cat]!.name : '+ UPLOAD FILE → FIREBASE'}
-                        </button>
-                      </div>
-
-                      <button
-                        onClick={() => handleSaveCatImage(cat)}
-                        disabled={catSaving[cat]}
-                        className="w-full bg-white text-black font-semibold tracking-widest text-xs sm:text-sm uppercase py-2.5 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >
-                        {catSaving[cat] ? 'SAVING...' : `SAVE ${cat.toUpperCase()} IMAGE`}
-                      </button>
-
-                      <AnimatePresence>
-                        {catSuccess[cat] && (
-                          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="text-green-400 text-xs tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                          >✓ UPDATED LIVE</motion.p>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                  {/* Or upload file */}
+                  <div>
+                    <input
+                      ref={catFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleCatFileChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => catFileRef.current?.click()}
+                      className="w-full border border-dashed border-white/15 rounded-lg py-2.5 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
+                      style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                    >
+                      {catFile ? catFile.name : '+ UPLOAD FILE → FIREBASE'}
+                    </button>
                   </div>
-                )
-              })}
+
+                  <button
+                    onClick={handleSaveCatImage}
+                    disabled={catSaving}
+                    className="w-full bg-white text-black font-semibold tracking-widest text-xs sm:text-sm uppercase py-2.5 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                  >
+                    {catSaving ? 'SAVING...' : 'SAVE BOOTS IMAGE'}
+                  </button>
+
+                  <AnimatePresence>
+                    {catSuccess && (
+                      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="text-green-400 text-xs tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                      >✓ UPDATED LIVE</motion.p>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
@@ -524,14 +489,13 @@ export default function AdminPage() {
 interface ManageCardProps {
   product: Product
   confirmDeleteId: string | null
-  badgeClass: (cat: Category) => string
   onToggle: () => void
   onAskDelete: () => void
   onConfirmDelete: () => void
   onCancelDelete: () => void
 }
 
-function ManageCard({ product, confirmDeleteId, badgeClass, onToggle, onAskDelete, onConfirmDelete, onCancelDelete }: ManageCardProps) {
+function ManageCard({ product, confirmDeleteId, onToggle, onAskDelete, onConfirmDelete, onCancelDelete }: ManageCardProps) {
   return (
     <div className="glass-card rounded-xl overflow-hidden">
       <div className="relative aspect-[4/3]">
@@ -569,7 +533,7 @@ function ManageCard({ product, confirmDeleteId, badgeClass, onToggle, onAskDelet
       <div className="p-2.5 sm:p-3">
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
-            <span className={`${badgeClass(product.category)} text-[9px] sm:text-[10px]`}>{product.category}</span>
+            <span className="badge-boots text-[9px] sm:text-[10px]">Boots</span>
             <p className="text-white text-xs sm:text-sm mt-1 leading-tight truncate" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em' }}>
               {product.name}
             </p>

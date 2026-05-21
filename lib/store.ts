@@ -11,12 +11,10 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 
-export type Category = 'Boots' | 'Jerseys' | 'Essentials'
+export type Category = 'Boots'
 
 export interface CategoryImages {
   Boots: string
-  Jerseys: string
-  Essentials: string
 }
 
 export interface Product {
@@ -29,9 +27,7 @@ export interface Product {
 }
 
 export const DEFAULT_CATEGORY_IMAGES: CategoryImages = {
-  Boots:      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80',
-  Jerseys:    'https://images.unsplash.com/photo-1551958219-acbc595b2f35?w=900&q=80',
-  Essentials: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=900&q=80',
+  Boots: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80',
 }
 
 interface ProductStore {
@@ -49,59 +45,45 @@ interface ProductStore {
 
 export const SAMPLE_PRODUCTS: Omit<Product, 'id'>[] = [
   {
-    name: 'Phantom Elite FG',
+    name: 'Nike Phantom Elite FG',
     category: 'Boots',
     imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&q=80',
     createdAt: '2024-01-01T00:00:00Z',
     featured: true,
   },
   {
-    name: 'Mercurial Superfly Pro',
+    name: 'Nike Mercurial Superfly Pro',
     category: 'Boots',
     imageUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=600&q=80',
     createdAt: '2024-01-02T00:00:00Z',
     featured: true,
   },
   {
-    name: 'FC Barcelona Home Kit',
-    category: 'Jerseys',
-    imageUrl: 'https://images.unsplash.com/photo-1551958219-acbc595b2f35?w=600&q=80',
+    name: 'Adidas Predator Accuracy+',
+    category: 'Boots',
+    imageUrl: 'https://images.unsplash.com/photo-1508609349937-5ec4ae374ebf?w=600&q=80',
     createdAt: '2024-01-03T00:00:00Z',
     featured: true,
   },
   {
-    name: 'Real Madrid Away Jersey',
-    category: 'Jerseys',
-    imageUrl: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=600&q=80',
+    name: 'Adidas Copa Pure 2+',
+    category: 'Boots',
+    imageUrl: 'https://images.unsplash.com/photo-1511886929837-354d827aae26?w=600&q=80',
     createdAt: '2024-01-04T00:00:00Z',
     featured: true,
   },
   {
-    name: 'Pro Training Grip Socks',
-    category: 'Essentials',
-    imageUrl: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&q=80',
+    name: 'Adidas X Crazyfast Elite',
+    category: 'Boots',
+    imageUrl: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=600&q=80',
     createdAt: '2024-01-05T00:00:00Z',
     featured: false,
   },
   {
-    name: 'Predator Accuracy.1',
+    name: 'Nike Tiempo Legend 10',
     category: 'Boots',
-    imageUrl: 'https://images.unsplash.com/photo-1508609349937-5ec4ae374ebf?w=600&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=600&q=80',
     createdAt: '2024-01-06T00:00:00Z',
-    featured: false,
-  },
-  {
-    name: 'Brazil World Cup Shirt',
-    category: 'Jerseys',
-    imageUrl: 'https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?w=600&q=80',
-    createdAt: '2024-01-07T00:00:00Z',
-    featured: false,
-  },
-  {
-    name: 'Match Day Shin Guards',
-    category: 'Essentials',
-    imageUrl: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=600&q=80',
-    createdAt: '2024-01-08T00:00:00Z',
     featured: false,
   },
 ]
@@ -139,6 +121,5 @@ export const useProductStore = create<ProductStore>((set, get) => ({
       { [category]: url },
       { merge: true }
     )
-    // onSnapshot in FirestoreSync will update local state
   },
 }))
