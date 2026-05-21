@@ -52,6 +52,7 @@ export default function AdminPage() {
   const [imageUrl, setImageUrl] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewSrc, setPreviewSrc] = useState('')
+  const [additionalUrls, setAdditionalUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
   const [uploadSuccess, setUploadSuccess] = useState(false)
@@ -92,8 +93,15 @@ export default function AdminPage() {
     try {
       let finalUrl = imageUrl
       if (imageMode === 'file' && imageFile) finalUrl = await uploadToStorage(imageFile, setUploadPct)
-      await addProduct({ name: name.trim(), category: 'Boots', imageUrl: finalUrl, featured: false })
-      setName(''); setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0)
+      const cleanExtra = additionalUrls.map((u) => u.trim()).filter(Boolean)
+      await addProduct({
+        name: name.trim(),
+        category: 'Boots',
+        imageUrl: finalUrl,
+        ...(cleanExtra.length > 0 && { images: cleanExtra }),
+        featured: false,
+      })
+      setName(''); setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0); setAdditionalUrls([])
       setUploadSuccess(true)
       setTimeout(() => setUploadSuccess(false), 3000)
     } catch { setUploadError('Upload failed — check Firestore/Storage rules.') }
@@ -317,6 +325,38 @@ export default function AdminPage() {
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Additional images */}
+                <div>
+                  <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                    ADDITIONAL IMAGES <span className="text-chrome-700">(optional — up to 5)</span>
+                  </label>
+                  <div className="space-y-2">
+                    {additionalUrls.map((url, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input
+                          className="admin-input flex-1 text-sm"
+                          placeholder={`Photo ${i + 2} URL...`}
+                          value={url}
+                          onChange={(e) => setAdditionalUrls((p) => p.map((u, j) => j === i ? e.target.value : u))}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setAdditionalUrls((p) => p.filter((_, j) => j !== i))}
+                          className="w-9 h-9 rounded-lg border border-red-500/20 text-red-400 flex items-center justify-center text-sm hover:bg-red-500/10 transition-colors flex-shrink-0"
+                        >✕</button>
+                      </div>
+                    ))}
+                    {additionalUrls.length < 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setAdditionalUrls((p) => [...p, ''])}
+                        className="w-full border border-dashed border-white/15 rounded-lg py-2 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
+                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                      >+ ADD ANOTHER PHOTO</button>
+                    )}
+                  </div>
                 </div>
 
                 <button type="submit" disabled={uploading || !name || (!imageUrl && !imageFile)}

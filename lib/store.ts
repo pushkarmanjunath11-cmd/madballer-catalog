@@ -22,6 +22,7 @@ export interface Product {
   name: string
   category: Category
   imageUrl: string
+  images?: string[]
   createdAt: string
   featured: boolean
 }
