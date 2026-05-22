@@ -4,7 +4,11 @@
       "Bash(mkdir -p \"C:\\\\Users\\\\2025\\\\Downloads\\\\madballers-catalog\\\\public\")",
       "Bash(python3 -c ' *)",
       "Bash(npm install *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(del components\\\\ImageUploadZone.tsx components\\\\UploadZone.tsx lib\\\\firebaseUpload.ts)"
     ]
   }
 }

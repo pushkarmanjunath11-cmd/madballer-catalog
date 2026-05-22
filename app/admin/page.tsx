@@ -4,9 +4,9 @@ import { useState, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
-import { startUpload } from '@/lib/firebaseUpload'
+import { uploadImage } from '@/lib/uploadImage'
 import { useProductStore, Product } from '@/lib/store'
-import UploadZone from '@/components/UploadZone'
+import ImageSlot from '@/components/ImageSlot'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -17,10 +17,10 @@ const MAX_EXTRAS = 5
 
 type Tab = 'upload' | 'manage' | 'categories'
 
-interface ExtraImage {
+interface ExtraSlot {
   id: number
-  url: string   // empty until upload completes
-  busy: boolean
+  url: string        // Firebase URL — empty until upload done
+  uploading: boolean
 }
 
 interface Toast {
@@ -29,22 +29,20 @@ interface Toast {
   msg: string
 }
 
-// ── Shared sub-components ──────────────────────────────────────────────────────
+// ── Logo ───────────────────────────────────────────────────────────────────────
 
 function LogoImg({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const cls = size === 'lg' ? 'w-20 h-20' : 'w-9 h-9'
   return (
-    <div
-      className={`relative ${cls} rounded-full overflow-hidden flex-shrink-0 ${
-        size === 'lg' ? 'animate-glow-pulse border border-white/10' : ''
-      }`}
-    >
+    <div className={`relative ${cls} rounded-full overflow-hidden flex-shrink-0 ${
+      size === 'lg' ? 'animate-glow-pulse border border-white/10' : ''
+    }`}>
       <Image src="/logo.png" alt="MAD BALLERS" fill className="object-contain" />
     </div>
   )
 }
 
-// ── Toast container ────────────────────────────────────────────────────────────
+// ── Toast stack ────────────────────────────────────────────────────────────────
 
 function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
   return (
@@ -53,19 +51,19 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: nu
         {toasts.map((t) => (
           <motion.div
             key={t.id}
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.95 }}
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0,  scale: 1    }}
+            exit={  { opacity: 0, y: 8,   scale: 0.95 }}
             transition={{ duration: 0.22 }}
             className={`
-              pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3
-              border shadow-xl backdrop-blur-sm
+              pointer-events-auto flex items-center gap-3
+              rounded-xl px-4 py-3 border shadow-xl backdrop-blur-sm
               ${t.type === 'ok'
                 ? 'bg-green-500/10 border-green-500/30 text-green-300'
-                : 'bg-red-500/10 border-red-500/30 text-red-300'}
+                : 'bg-red-500/10  border-red-500/30  text-red-300'}
             `}
           >
-            <span className="text-base">{t.type === 'ok' ? '✓' : '✕'}</span>
+            <span>{t.type === 'ok' ? '✓' : '✕'}</span>
             <span
               className="text-xs tracking-widest leading-snug max-w-[220px]"
               style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
@@ -90,109 +88,97 @@ function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: nu
 export default function AdminPage() {
 
   // ── Auth ───────────────────────────────────────────────────────
-  const [authed, setAuthed]     = useState(false)
+  const [authed,   setAuthed]   = useState(false)
   const [password, setPassword] = useState('')
-  const [wrongPw, setWrongPw]   = useState(false)
+  const [wrongPw,  setWrongPw]  = useState(false)
   const [shakeKey, setShakeKey] = useState(0)
 
   // ── Navigation ─────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('upload')
 
-  // ── Toast notifications ─────────────────────────────────────────
+  // ── Toasts ─────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Toast[]>([])
-  const toastIdRef = useRef(0)
+  const toastId = useRef(0)
 
   const addToast = useCallback((type: 'ok' | 'err', msg: string) => {
-    const id = ++toastIdRef.current
-    setToasts((prev) => [...prev, { id, type, msg }])
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000)
+    const id = ++toastId.current
+    setToasts(prev => [...prev, { id, type, msg }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
   }, [])
 
   const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
+    setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
   // ── Upload form ────────────────────────────────────────────────
-  // Incrementing formKey fully unmounts/remounts all UploadZone instances → clean reset
-  const [formKey,     setFormKey]     = useState(0)
-  const [mainUrl,     setMainUrl]     = useState('')     // Firebase URL (set when upload done)
-  const [mainPreview, setMainPreview] = useState('')     // blob URL for live preview panel
-  const [mainBusy,    setMainBusy]    = useState(false)
-  const [extras,      setExtras]      = useState<ExtraImage[]>([])
+  // formKey remounts ImageSlot instances on reset, giving each a clean state
+  const [formKey,        setFormKey]        = useState(0)
+  const [mainUrl,        setMainUrl]        = useState('')
+  const [mainPreview,    setMainPreview]    = useState('')   // local data-URL for live preview
+  const [mainUploading,  setMainUploading]  = useState(false)
+  const [extras,         setExtras]         = useState<ExtraSlot[]>([])
   const nextId = useRef(0)
-  const [saving,      setSaving]      = useState(false)
+  const [saving,         setSaving]         = useState(false)
 
   // ── Manage tab ─────────────────────────────────────────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   // ── Categories tab ─────────────────────────────────────────────
-  const [catUrl,      setCatUrl]      = useState('')
-  const [catFile,     setCatFile]     = useState<File | null>(null)
-  const [catPreview,  setCatPreview]  = useState('')
-  const [catSaving,   setCatSaving]   = useState(false)
-  const catFileRef = useRef<HTMLInputElement>(null)
+  const [catUrl,     setCatUrl]     = useState('')
+  const [catFile,    setCatFile]    = useState<File | null>(null)
+  const [catPreview, setCatPreview] = useState('')
+  const [catSaving,  setCatSaving]  = useState(false)
+  const catInputRef = useRef<HTMLInputElement>(null)
 
-  const {
-    products, loading,
-    categoryImages, addProduct, removeProduct, updateCategoryImage,
-  } = useProductStore()
+  const { products, loading, categoryImages, addProduct, removeProduct, updateCategoryImage } =
+    useProductStore()
 
   // ── Auth ───────────────────────────────────────────────────────
 
   const handleLogin = useCallback(() => {
     if (password === ADMIN_PASSWORD) {
-      setAuthed(true)
-      setWrongPw(false)
+      setAuthed(true); setWrongPw(false)
     } else {
-      setWrongPw(true)
-      setShakeKey((k) => k + 1)
-      setPassword('')
+      setWrongPw(true); setShakeKey(k => k + 1); setPassword('')
     }
   }, [password])
 
-  // ── Extra image helpers ────────────────────────────────────────
-
-  const updateExtraUrl = useCallback((id: number, url: string) => {
-    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, url } : e)))
-  }, [])
-
-  const updateExtraBusy = useCallback((id: number, busy: boolean) => {
-    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, busy } : e)))
-  }, [])
-
-  const handleExtraError = useCallback((msg: string) => {
-    addToast('err', msg)
-  }, [addToast])
-
-  const removeExtra = useCallback((id: number) => {
-    setExtras((prev) => prev.filter((e) => e.id !== id))
-  }, [])
+  // ── Extra slot helpers ─────────────────────────────────────────
 
   const addExtra = useCallback(() => {
-    setExtras((prev) => [
-      ...prev,
-      { id: nextId.current++, url: '', busy: false },
-    ])
+    setExtras(prev => [...prev, { id: nextId.current++, url: '', uploading: false }])
+  }, [])
+
+  const removeExtra = useCallback((id: number) => {
+    setExtras(prev => prev.filter(e => e.id !== id))
+  }, [])
+
+  const setExtraUrl = useCallback((id: number, url: string) => {
+    setExtras(prev => prev.map(e => e.id === id ? { ...e, url } : e))
+  }, [])
+
+  const setExtraUploading = useCallback((id: number, uploading: boolean) => {
+    setExtras(prev => prev.map(e => e.id === id ? { ...e, uploading } : e))
   }, [])
 
   // ── Submit gate ────────────────────────────────────────────────
 
-  const anyBusy = useMemo(
-    () => mainBusy || extras.some((e) => e.busy),
-    [mainBusy, extras],
+  const anyUploading = useMemo(
+    () => mainUploading || extras.some(e => e.uploading),
+    [mainUploading, extras],
   )
 
   const canSubmit = useMemo(
-    () => !!mainUrl && !anyBusy && !saving,
-    [mainUrl, anyBusy, saving],
+    () => !!mainUrl && !anyUploading && !saving,
+    [mainUrl, anyUploading, saving],
   )
 
   const submitLabel = useMemo(() => {
-    if (saving)   return 'SAVING TO FIRESTORE...'
-    if (anyBusy)  return 'UPLOADING...'
-    if (!mainUrl) return 'SELECT AN IMAGE FIRST'
+    if (saving)       return 'SAVING...'
+    if (anyUploading) return 'UPLOADING...'
+    if (!mainUrl)     return 'SELECT AN IMAGE FIRST'
     return 'ADD PRODUCT ✓'
-  }, [saving, anyBusy, mainUrl])
+  }, [saving, anyUploading, mainUrl])
 
   // ── Submit ─────────────────────────────────────────────────────
 
@@ -200,23 +186,19 @@ export default function AdminPage() {
     if (!canSubmit) return
     setSaving(true)
     try {
-      const extraUrls = extras.map((e) => e.url).filter(Boolean)
+      const extraUrls = extras.map(e => e.url).filter(Boolean)
       await addProduct({
         name: '',
         category: 'Boots',
         imageUrl: mainUrl,
         ...(extraUrls.length > 0 && { images: extraUrls }),
       })
-      // Reset form — incrementing formKey unmounts all UploadZone instances
-      setMainUrl('')
-      setMainPreview('')
-      setMainBusy(false)
-      setExtras([])
-      setFormKey((k) => k + 1)
-      addToast('ok', 'PRODUCT SAVED TO FIRESTORE ✓')
+      // Reset form — incrementing formKey fully remounts all ImageSlot instances
+      setMainUrl(''); setMainPreview(''); setMainUploading(false)
+      setExtras([]); setFormKey(k => k + 1)
+      addToast('ok', 'PRODUCT SAVED ✓')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      addToast('err', `Save failed: ${msg}`)
+      addToast('err', `Save failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setSaving(false)
     }
@@ -228,125 +210,109 @@ export default function AdminPage() {
     try {
       await removeProduct(id)
       setConfirmDeleteId(null)
-      addToast('ok', 'PRODUCT DELETED')
-    } catch (err) {
-      console.error('Delete error:', err)
+      addToast('ok', 'DELETED')
+    } catch {
       setConfirmDeleteId(null)
-      addToast('err', 'Delete failed — check Firestore rules (allow write: if true)')
+      addToast('err', 'Delete blocked — set Firestore rules to allow write: if true')
     }
   }, [removeProduct, addToast])
 
-  // ── Category image save ────────────────────────────────────────
+  // ── Category save ──────────────────────────────────────────────
 
-  const handleSaveCatImage = useCallback(async () => {
-    setCatSaving(true)
-    try {
-      let url = catUrl.trim() || categoryImages['Boots']
-      if (catFile) {
-        const { promise } = startUpload(catFile, 'categories', () => {})
-        url = await promise
-        setCatPreview(url)
-        setCatFile(null)
-        if (catFileRef.current) catFileRef.current.value = ''
-      }
-      await updateCategoryImage('Boots', url)
-      addToast('ok', 'BOOTS IMAGE UPDATED ✓')
-    } catch (err) {
-      console.error('Category save failed:', err)
-      addToast('err', 'Failed to save category image')
-    } finally {
-      setCatSaving(false)
-    }
-  }, [catUrl, catFile, categoryImages, updateCategoryImage, addToast])
-
-  const handleCatFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCatFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setCatFile(file)
     setCatPreview(URL.createObjectURL(file))
   }, [])
 
-  // ── Main upload error handler ──────────────────────────────────
-  const handleMainError = useCallback((msg: string) => {
-    addToast('err', msg)
-  }, [addToast])
+  const handleSaveCat = useCallback(async () => {
+    setCatSaving(true)
+    try {
+      let url = catUrl.trim() || categoryImages['Boots']
+      if (catFile) {
+        url = await uploadImage(catFile, 'categories')
+        setCatPreview(url); setCatFile(null)
+        if (catInputRef.current) catInputRef.current.value = ''
+      }
+      await updateCategoryImage('Boots', url)
+      addToast('ok', 'BOOTS IMAGE UPDATED ✓')
+    } catch {
+      addToast('err', 'Failed to save category image')
+    } finally {
+      setCatSaving(false)
+    }
+  }, [catUrl, catFile, categoryImages, updateCategoryImage, addToast])
 
   // ════════════════════════════════════════════════════════════════
   // LOGIN SCREEN
   // ════════════════════════════════════════════════════════════════
 
-  if (!authed) {
-    return (
-      <main className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7 }}
-          className="glass-card-strong rounded-2xl p-8 sm:p-10 w-full max-w-sm silver-glow text-center"
+  if (!authed) return (
+    <main className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-4">
+      <motion.div
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7 }}
+        className="glass-card-strong rounded-2xl p-8 sm:p-10 w-full max-w-sm silver-glow text-center"
+      >
+        <div className="flex justify-center mb-6"><LogoImg size="lg" /></div>
+        <h1
+          className="chrome-text text-5xl tracking-[0.15em] mb-1"
+          style={{ fontFamily: 'Bebas Neue, sans-serif' }}
         >
-          <div className="flex justify-center mb-6">
-            <LogoImg size="lg" />
-          </div>
-          <h1
-            className="chrome-text text-5xl tracking-[0.15em] mb-1"
-            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
-          >
-            ADMIN
-          </h1>
-          <p
-            className="text-chrome-500 text-xs tracking-[0.25em] mb-8"
+          ADMIN
+        </h1>
+        <p
+          className="text-chrome-500 text-xs tracking-[0.25em] mb-8"
+          style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+        >
+          BALLER ZONE DASHBOARD
+        </p>
+
+        <form onSubmit={(e) => { e.preventDefault(); handleLogin() }} className="space-y-4">
+          <input
+            type="password"
+            autoComplete="off"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className="admin-input text-center tracking-widest"
+          />
+          <AnimatePresence>
+            {wrongPw && (
+              <motion.p
+                key={shakeKey}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: [0, -8, 8, -6, 6, -4, 4, 0] }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.4 }}
+                className="text-red-400 text-sm tracking-widest"
+                style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+              >
+                WRONG PASSWORD
+              </motion.p>
+            )}
+          </AnimatePresence>
+          <button
+            type="submit"
+            className="w-full bg-white text-black font-semibold tracking-[0.2em] text-sm uppercase py-3 rounded-lg hover:bg-chrome-100 transition-colors"
             style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
           >
-            BALLER ZONE DASHBOARD
-          </p>
+            ENTER
+          </button>
+        </form>
 
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleLogin() }}
-            className="space-y-4"
-          >
-            <input
-              type="password"
-              autoComplete="off"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="admin-input text-center tracking-widest"
-            />
-            <AnimatePresence>
-              {wrongPw && (
-                <motion.p
-                  key={shakeKey}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: [0, -8, 8, -6, 6, -4, 4, 0] }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4 }}
-                  className="text-red-400 text-sm tracking-widest"
-                  style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                >
-                  WRONG PASSWORD
-                </motion.p>
-              )}
-            </AnimatePresence>
-            <button
-              type="submit"
-              className="w-full bg-white text-black font-semibold tracking-[0.2em] text-sm uppercase py-3 rounded-lg hover:bg-chrome-100 transition-colors"
-              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-            >
-              ENTER
-            </button>
-          </form>
-
-          <Link
-            href="/"
-            className="inline-block mt-6 text-chrome-600 text-xs tracking-widest hover:text-chrome-400 transition-colors"
-            style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-          >
-            ← BACK TO SITE
-          </Link>
-        </motion.div>
-      </main>
-    )
-  }
+        <Link
+          href="/"
+          className="inline-block mt-6 text-chrome-600 text-xs tracking-widest hover:text-chrome-400 transition-colors"
+          style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+        >
+          ← BACK TO SITE
+        </Link>
+      </motion.div>
+    </main>
+  )
 
   // ════════════════════════════════════════════════════════════════
   // DASHBOARD
@@ -355,10 +321,9 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-[#0a0a0a]">
 
-      {/* Global toast notifications */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
-      {/* ── Top nav ── */}
+      {/* ── Nav ── */}
       <nav className="glass-card-strong border-b border-white/[0.07] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -421,15 +386,13 @@ export default function AdminPage() {
           </span>
         </div>
 
-        {/* Tab bar */}
+        {/* Tabs */}
         <div className="flex gap-2 sm:gap-3 mb-6 sm:mb-8 overflow-x-auto pb-1">
-          {(
-            [
-              { id: 'upload',     label: 'UPLOAD'     },
-              { id: 'manage',     label: 'MANAGE'     },
-              { id: 'categories', label: 'CATEGORIES' },
-            ] as { id: Tab; label: string }[]
-          ).map((t) => (
+          {([
+            { id: 'upload',     label: 'UPLOAD'     },
+            { id: 'manage',     label: 'MANAGE'     },
+            { id: 'categories', label: 'CATEGORIES' },
+          ] as { id: Tab; label: string }[]).map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
@@ -448,13 +411,13 @@ export default function AdminPage() {
         {/* ══════════════ UPLOAD TAB ══════════════ */}
         {activeTab === 'upload' && (
           <motion.div
-            key={`upload-tab-${formKey}`}
+            key={`upload-${formKey}`}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
             className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8"
           >
-            {/* ── Left: Form ── */}
+            {/* ── Left: form ── */}
             <div className="glass-card rounded-2xl p-5 sm:p-8 space-y-5">
               <h2
                 className="chrome-text text-2xl tracking-widest"
@@ -463,7 +426,7 @@ export default function AdminPage() {
                 ADD BOOTS
               </h2>
 
-              {/* Main image zone */}
+              {/* Main image */}
               <div>
                 <label
                   className="text-chrome-500 text-xs tracking-widest block mb-2"
@@ -471,19 +434,16 @@ export default function AdminPage() {
                 >
                   MAIN IMAGE
                 </label>
-                <UploadZone
+                <ImageSlot
                   key={`main-${formKey}`}
                   folder="products"
-                  label="+ SELECT IMAGE"
-                  sublabel="drag & drop or tap to browse"
-                  onUploaded={setMainUrl}
+                  onUrl={setMainUrl}
                   onPreview={setMainPreview}
-                  onBusyChange={setMainBusy}
-                  onError={handleMainError}
+                  onBusyChange={setMainUploading}
                 />
               </div>
 
-              {/* Additional images */}
+              {/* Extra images */}
               <div>
                 <label
                   className="text-chrome-500 text-xs tracking-widest block mb-2"
@@ -495,9 +455,9 @@ export default function AdminPage() {
 
                 <div className="space-y-2">
                   <AnimatePresence initial={false}>
-                    {extras.map((extra, idx) => (
+                    {extras.map((slot, idx) => (
                       <motion.div
-                        key={extra.id}
+                        key={slot.id}
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
@@ -505,19 +465,18 @@ export default function AdminPage() {
                         className="flex gap-2"
                       >
                         <div className="flex-1">
-                          <UploadZone
+                          <ImageSlot
                             compact
                             folder="products"
                             label={`+ PHOTO ${idx + 2}`}
-                            onUploaded={(url) => updateExtraUrl(extra.id, url)}
-                            onBusyChange={(busy) => updateExtraBusy(extra.id, busy)}
-                            onError={handleExtraError}
+                            onUrl={url => setExtraUrl(slot.id, url)}
+                            onBusyChange={b => setExtraUploading(slot.id, b)}
                           />
                         </div>
                         <button
                           type="button"
-                          onClick={() => removeExtra(extra.id)}
-                          disabled={extra.busy}
+                          onClick={() => removeExtra(slot.id)}
+                          disabled={slot.uploading}
                           className="w-9 h-9 rounded-lg border border-red-500/20 text-red-400 flex-shrink-0 flex items-center justify-center text-sm hover:bg-red-500/10 transition-colors disabled:opacity-30"
                         >
                           ✕
@@ -551,7 +510,7 @@ export default function AdminPage() {
               </button>
             </div>
 
-            {/* ── Right: Live preview ── */}
+            {/* ── Right: live preview ── */}
             <div>
               <h2
                 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6"
@@ -640,7 +599,7 @@ export default function AdminPage() {
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-                {products.map((product) => (
+                {products.map(product => (
                   <ManageCard
                     key={product.id}
                     product={product}
@@ -670,7 +629,6 @@ export default function AdminPage() {
             </p>
             <div className="max-w-sm">
               <div className="glass-card rounded-2xl overflow-hidden">
-                {/* Current image preview */}
                 <div className="relative aspect-[3/2]">
                   <Image
                     src={catPreview || categoryImages['Boots']}
@@ -687,38 +645,32 @@ export default function AdminPage() {
                     BOOTS
                   </h3>
                 </div>
-
                 <div className="p-4 space-y-3">
                   <input
                     className="admin-input text-sm"
                     placeholder="Paste new image URL..."
                     value={catUrl}
-                    onChange={(e) => {
-                      setCatUrl(e.target.value)
-                      if (e.target.value) setCatPreview(e.target.value)
-                    }}
+                    onChange={e => { setCatUrl(e.target.value); if (e.target.value) setCatPreview(e.target.value) }}
                   />
-
                   <div>
                     <input
-                      ref={catFileRef}
+                      ref={catInputRef}
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={handleCatFileChange}
+                      onChange={handleCatFile}
                     />
                     <button
                       type="button"
-                      onClick={() => catFileRef.current?.click()}
+                      onClick={() => catInputRef.current?.click()}
                       className="w-full border border-dashed border-white/15 rounded-lg py-2.5 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
                       style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                     >
                       {catFile ? catFile.name : '+ UPLOAD FILE → FIREBASE'}
                     </button>
                   </div>
-
                   <button
-                    onClick={handleSaveCatImage}
+                    onClick={handleSaveCat}
                     disabled={catSaving}
                     className="w-full bg-white text-black font-semibold tracking-widest text-xs sm:text-sm uppercase py-2.5 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
@@ -746,10 +698,7 @@ interface ManageCardProps {
   onCancelDelete: () => void
 }
 
-function ManageCard({
-  product, confirmDeleteId,
-  onAskDelete, onConfirmDelete, onCancelDelete,
-}: ManageCardProps) {
+function ManageCard({ product, confirmDeleteId, onAskDelete, onConfirmDelete, onCancelDelete }: ManageCardProps) {
   return (
     <div className="glass-card rounded-xl overflow-hidden">
       <div className="relative aspect-[4/3]">
@@ -760,7 +709,6 @@ function ManageCard({
           className="object-cover"
           unoptimized
         />
-
         <AnimatePresence>
           {confirmDeleteId === product.id && (
             <motion.div
@@ -770,7 +718,7 @@ function ManageCard({
               className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-3 p-3"
             >
               <p
-                className="text-white text-xs tracking-widest text-center leading-relaxed"
+                className="text-white text-xs tracking-widest text-center"
                 style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
               >
                 DELETE THIS BOOT?
@@ -795,7 +743,6 @@ function ManageCard({
           )}
         </AnimatePresence>
       </div>
-
       <div className="p-2.5 sm:p-3 flex items-center justify-between gap-1.5">
         <span className="badge-boots text-[9px] sm:text-[10px]">Boots</span>
         <button
