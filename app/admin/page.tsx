@@ -74,7 +74,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('upload')
 
   // ── Upload product form ───────────────────────────
-  const [imageMode, setImageMode] = useState<'url' | 'file'>('url')
+  const [imageMode, setImageMode] = useState<'url' | 'file'>('file')
   const [imageUrl, setImageUrl] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewSrc, setPreviewSrc] = useState('')
@@ -86,6 +86,7 @@ export default function AdminPage() {
   const [uploadPct, setUploadPct] = useState(0)
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  const [showRulesHelp, setShowRulesHelp] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── Crop modal ────────────────────────────────────
@@ -171,7 +172,15 @@ export default function AdminPage() {
       setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([])
       setUploadSuccess(true)
       setTimeout(() => setUploadSuccess(false), 3000)
-    } catch { setUploadError('Upload failed — check Firestore/Storage rules.') }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('permission') || msg.includes('unauthorized') || msg.includes('rules')) {
+        setUploadError('FIREBASE STORAGE RULES BLOCKING UPLOAD — see instructions below')
+        setShowRulesHelp(true)
+      } else {
+        setUploadError(`Upload failed: ${msg}`)
+      }
+    }
     finally { setUploading(false) }
   }
 
@@ -365,14 +374,19 @@ export default function AdminPage() {
                 <div>
                   <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>IMAGE</label>
                   <div className="flex gap-2 mb-3">
-                    {(['url', 'file'] as const).map((mode) => (
+                    {(['file', 'url'] as const).map((mode) => (
                       <button key={mode} type="button"
-                        onClick={() => { setImageMode(mode); setPreviewSrc(''); setImageUrl(''); setImageFile(null); setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([]) }}
+                        onClick={() => { setImageMode(mode); setPreviewSrc(''); setImageUrl(''); setImageFile(null); setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([]); setShowRulesHelp(false); setUploadError('') }}
                         className={`px-3 py-1.5 text-xs tracking-widest rounded-full border transition-all ${imageMode === mode ? 'bg-white text-black border-white' : 'border-white/15 text-chrome-400 hover:border-white/30'}`}
                         style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >{mode === 'url' ? 'URL' : 'FILE → FIREBASE'}</button>
+                      >{mode === 'url' ? 'URL' : 'FILE → FIREBASE ★'}</button>
                     ))}
                   </div>
+                  {imageMode === 'url' && (
+                    <p className="text-yellow-500/80 text-[10px] tracking-widest mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      ⚠ WhatsApp image URLs expire — use FILE → FIREBASE instead
+                    </p>
+                  )}
                   {imageMode === 'url' ? (
                     <input className="admin-input" placeholder="https://..." value={imageUrl} onChange={(e) => { setImageUrl(e.target.value); setPreviewSrc(e.target.value) }} />
                   ) : (
@@ -478,8 +492,43 @@ export default function AdminPage() {
                   )}
                   {uploadError && (
                     <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      className="text-red-400 text-sm tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                      className="text-red-400 text-xs tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                     >✕ {uploadError}</motion.p>
+                  )}
+                  {showRulesHelp && (
+                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 text-left space-y-2"
+                    >
+                      <p className="text-yellow-400 text-xs font-semibold tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        HOW TO FIX — FIREBASE STORAGE RULES
+                      </p>
+                      <ol className="text-yellow-300/70 text-[11px] leading-relaxed space-y-1 list-decimal list-inside" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        <li>Go to <strong className="text-yellow-300">console.firebase.google.com</strong></li>
+                        <li>Select project <strong className="text-yellow-300">madballers-catalog</strong></li>
+                        <li>Click <strong className="text-yellow-300">Storage</strong> in the left menu</li>
+                        <li>Click the <strong className="text-yellow-300">Rules</strong> tab</li>
+                        <li>Replace all the text with this:</li>
+                      </ol>
+                      <pre className="bg-black/40 rounded-lg p-3 text-green-400 text-[10px] leading-relaxed overflow-x-auto">
+{`rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+                      </pre>
+                      <p className="text-yellow-300/70 text-[10px] leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        6. Click <strong className="text-yellow-300">Publish</strong> — then try uploading again.
+                      </p>
+                      <p className="text-yellow-500/50 text-[9px] tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        Also do the same in Firestore → Rules if deleting/adding fails.
+                      </p>
+                      <button onClick={() => setShowRulesHelp(false)} className="text-yellow-500/50 text-[10px] hover:text-yellow-400 transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        DISMISS ✕
+                      </button>
+                    </motion.div>
                   )}
                 </AnimatePresence>
               </form>
