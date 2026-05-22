@@ -16,6 +16,7 @@ const MAX_EXTRAS = 5
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type Tab = 'upload' | 'manage' | 'categories'
+type ImageMode = 'url' | 'file'
 
 interface ExtraSlot {
   id: number
@@ -113,8 +114,10 @@ export default function AdminPage() {
   // ── Upload form ────────────────────────────────────────────────
   // formKey remounts ImageSlot instances on reset, giving each a clean state
   const [formKey,        setFormKey]        = useState(0)
+  const [imageMode,      setImageMode]      = useState<ImageMode>('url')
+  const [urlInput,       setUrlInput]       = useState('')   // raw text value (url mode only)
   const [mainUrl,        setMainUrl]        = useState('')
-  const [mainPreview,    setMainPreview]    = useState('')   // local data-URL for live preview
+  const [mainPreview,    setMainPreview]    = useState('')   // blob URL or direct URL for live preview
   const [mainUploading,  setMainUploading]  = useState(false)
   const [extras,         setExtras]         = useState<ExtraSlot[]>([])
   const nextId = useRef(0)
@@ -142,6 +145,28 @@ export default function AdminPage() {
       setWrongPw(true); setShakeKey(k => k + 1); setPassword('')
     }
   }, [password])
+
+  // ── Image mode switch ──────────────────────────────────────────
+
+  const switchMode = useCallback((mode: ImageMode) => {
+    setImageMode(mode)
+    // Clear image state so there's no carry-over between modes
+    setUrlInput('')
+    setMainUrl('')
+    setMainPreview('')
+    setMainUploading(false)
+    setFormKey(k => k + 1)   // remounts ImageSlot cleanly
+  }, [])
+
+  // ── URL input handler ──────────────────────────────────────────
+
+  const handleUrlInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    setUrlInput(raw)
+    const trimmed = raw.trim()
+    setMainUrl(trimmed)
+    setMainPreview(trimmed)   // live preview updates instantly
+  }, [])
 
   // ── Extra slot helpers ─────────────────────────────────────────
 
@@ -176,9 +201,9 @@ export default function AdminPage() {
   const submitLabel = useMemo(() => {
     if (saving)       return 'SAVING...'
     if (anyUploading) return 'UPLOADING...'
-    if (!mainUrl)     return 'SELECT AN IMAGE FIRST'
+    if (!mainUrl)     return imageMode === 'url' ? 'PASTE AN IMAGE URL FIRST' : 'SELECT AN IMAGE FIRST'
     return 'ADD PRODUCT ✓'
-  }, [saving, anyUploading, mainUrl])
+  }, [saving, anyUploading, mainUrl, imageMode])
 
   // ── Submit ─────────────────────────────────────────────────────
 
@@ -193,8 +218,8 @@ export default function AdminPage() {
         imageUrl: mainUrl,
         ...(extraUrls.length > 0 && { images: extraUrls }),
       })
-      // Reset form — incrementing formKey fully remounts all ImageSlot instances
-      setMainUrl(''); setMainPreview(''); setMainUploading(false)
+      // Reset form — clears all image state and remounts ImageSlot instances
+      setUrlInput(''); setMainUrl(''); setMainPreview(''); setMainUploading(false)
       setExtras([]); setFormKey(k => k + 1)
       addToast('ok', 'PRODUCT SAVED ✓')
     } catch (err) {
@@ -427,20 +452,78 @@ export default function AdminPage() {
               </h2>
 
               {/* Main image */}
-              <div>
+              <div className="space-y-2">
                 <label
-                  className="text-chrome-500 text-xs tracking-widest block mb-2"
+                  className="text-chrome-500 text-xs tracking-widest block"
                   style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                 >
                   MAIN IMAGE
                 </label>
-                <ImageSlot
-                  key={`main-${formKey}`}
-                  folder="products"
-                  onUrl={setMainUrl}
-                  onPreview={setMainPreview}
-                  onBusyChange={setMainUploading}
-                />
+
+                {/* Mode toggle */}
+                <div className="flex gap-1 p-1 rounded-full bg-white/[0.04] border border-white/10">
+                  {(['url', 'file'] as ImageMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => switchMode(mode)}
+                      className={`flex-1 py-1.5 text-[10px] tracking-widest uppercase rounded-full transition-all duration-200 ${
+                        imageMode === mode
+                          ? 'bg-white text-black font-semibold'
+                          : 'text-chrome-500 hover:text-chrome-300'
+                      }`}
+                      style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                    >
+                      {mode === 'url' ? 'IMAGE URL' : 'FILE UPLOAD'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* URL input */}
+                <AnimatePresence mode="wait">
+                  {imageMode === 'url' ? (
+                    <motion.div
+                      key="url-mode"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18 }}
+                      className="space-y-1.5"
+                    >
+                      <input
+                        type="url"
+                        className="admin-input text-sm"
+                        placeholder="Paste image URL (https://...)"
+                        value={urlInput}
+                        onChange={handleUrlInput}
+                      />
+                      {mainUrl && (
+                        <p
+                          className="text-green-400 text-[10px] tracking-widest"
+                          style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                        >
+                          ✓ URL READY — preview updating
+                        </p>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="file-mode"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18 }}
+                    >
+                      <ImageSlot
+                        key={`main-${formKey}`}
+                        folder="products"
+                        onUrl={setMainUrl}
+                        onPreview={setMainPreview}
+                        onBusyChange={setMainUploading}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Extra images */}
