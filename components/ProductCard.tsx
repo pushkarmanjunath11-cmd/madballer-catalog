@@ -27,13 +27,13 @@ export default function ProductCard({ product, index = 0 }: Props) {
         onClick={() => setModalOpen(true)}
       >
         {/* Image */}
-        <div className="relative overflow-hidden aspect-[4/3]">
+        <div className="relative overflow-hidden aspect-square bg-[#111]">
           <Image
             src={product.imageUrl}
             alt="Football boot"
             fill
             sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 25vw"
-            className="object-cover transition-transform duration-500 group-hover:scale-110"
+            className="object-contain transition-transform duration-500 group-hover:scale-105"
             unoptimized
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />

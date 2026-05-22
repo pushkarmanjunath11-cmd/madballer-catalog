@@ -64,7 +64,7 @@ export default function ProductModal({ product, onClose }: Props) {
         onTouchEnd={onTouchEnd}
       >
         {/* Main image */}
-        <div className="relative aspect-square bg-chrome-900 overflow-hidden">
+        <div className="relative aspect-square bg-[#111] overflow-hidden">
           <AnimatePresence mode="wait">
             <motion.div
               key={current}
@@ -78,7 +78,7 @@ export default function ProductModal({ product, onClose }: Props) {
                 src={allImages[current]}
                 alt={`Boot photo ${current + 1}`}
                 fill
-                className="object-cover"
+                className="object-contain"
                 unoptimized
               />
             </motion.div>

@@ -12,11 +12,37 @@ const ADMIN_PASSWORD = 'madballers2024'
 
 type Tab = 'upload' | 'manage' | 'categories'
 
+// ── Compress image before upload (canvas resize → JPEG 75%) ──
+function compressImage(file: File, maxPx = 1200): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new window.Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round((height / width) * maxPx); width = maxPx }
+        else { width = Math.round((width / height) * maxPx); height = maxPx }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width; canvas.height = height
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => resolve(blob ? new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }) : file),
+        'image/jpeg', 0.75
+      )
+    }
+    img.onerror = () => resolve(file) // fallback: use original
+    img.src = url
+  })
+}
+
 // ── Reusable upload helper ───────────────────────────
-function uploadToStorage(file: File, onProgress: (n: number) => void): Promise<string> {
+async function uploadToStorage(file: File, onProgress: (n: number) => void): Promise<string> {
+  const compressed = await compressImage(file)
   return new Promise((resolve, reject) => {
-    const storageRef = ref(storage, `products/${Date.now()}_${file.name}`)
-    const task = uploadBytesResumable(storageRef, file)
+    const storageRef = ref(storage, `products/${Date.now()}_${compressed.name}`)
+    const task = uploadBytesResumable(storageRef, compressed)
     task.on(
       'state_changed',
       (s) => onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
@@ -422,9 +448,9 @@ export default function AdminPage() {
             <div>
               <h2 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>LIVE PREVIEW</h2>
               <div className="glass-card rounded-xl overflow-hidden max-w-xs">
-                <div className="relative aspect-[4/3] bg-chrome-900">
+                <div className="relative aspect-square bg-[#111]">
                   {previewSrc
-                    ? <Image src={previewSrc} alt="Preview" fill className="object-cover" unoptimized />
+                    ? <Image src={previewSrc} alt="Preview" fill className="object-contain" unoptimized />
                     : <div className="absolute inset-0 flex items-center justify-center text-chrome-700 text-4xl">👟</div>
                   }
                 </div>
