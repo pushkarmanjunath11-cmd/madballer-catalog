@@ -163,9 +163,17 @@ export default function CropModal({ src, file, onConfirm, onCancel }: Props) {
     const ch2 = Math.min(sh, nh - cy2)
     if (cw2 <= 0 || ch2 <= 0) return
 
+    // Resize output to max 1200px — keeps file small for fast upload
+    const MAX = 1200
+    let outW = cw2, outH = ch2
+    if (outW > MAX || outH > MAX) {
+      if (outW >= outH) { outH = Math.round(outH / outW * MAX); outW = MAX }
+      else              { outW = Math.round(outW / outH * MAX); outH = MAX }
+    }
+
     const canvas = document.createElement('canvas')
-    canvas.width = cw2; canvas.height = ch2
-    canvas.getContext('2d')!.drawImage(img, cx2, cy2, cw2, ch2, 0, 0, cw2, ch2)
+    canvas.width = outW; canvas.height = outH
+    canvas.getContext('2d')!.drawImage(img, cx2, cy2, cw2, ch2, 0, 0, outW, outH)
 
     canvas.toBlob((blob) => {
       if (!blob) return
@@ -174,8 +182,8 @@ export default function CropModal({ src, file, onConfirm, onCancel }: Props) {
         file.name.replace(/\.\w+$/, '_crop.jpg'),
         { type: 'image/jpeg' }
       )
-      onConfirm(cropped, canvas.toDataURL('image/jpeg', 0.92))
-    }, 'image/jpeg', 0.92)
+      onConfirm(cropped, canvas.toDataURL('image/jpeg', 0.80))
+    }, 'image/jpeg', 0.80)
   }
 
   const HANDLE = 'absolute w-3.5 h-3.5 bg-white rounded-sm border border-black/50 z-20 touch-none'
