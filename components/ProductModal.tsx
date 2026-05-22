@@ -76,7 +76,7 @@ export default function ProductModal({ product, onClose }: Props) {
             >
               <Image
                 src={allImages[current]}
-                alt={`${product.name} ${current + 1}`}
+                alt={`Boot photo ${current + 1}`}
                 fill
                 className="object-cover"
                 unoptimized
@@ -97,11 +97,6 @@ export default function ProductModal({ product, onClose }: Props) {
           <div className="absolute top-3 left-3 z-10 pointer-events-none">
             <span className="badge-boots">Boots</span>
           </div>
-
-          {/* Featured */}
-          {product.featured && (
-            <span className="absolute top-10 left-3 mt-1 z-10 text-yellow-400 text-sm drop-shadow pointer-events-none">★ Featured</span>
-          )}
 
           {/* Arrow navigation */}
           {allImages.length > 1 && (
@@ -160,16 +155,10 @@ export default function ProductModal({ product, onClose }: Props) {
           </div>
         )}
 
-        {/* Info */}
-        <div className="p-4 pt-3 space-y-3">
-          <h3
-            className="chrome-text text-2xl sm:text-3xl leading-tight"
-            style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.06em' }}
-          >
-            {product.name}
-          </h3>
+        {/* Order button */}
+        <div className="p-4 pt-3">
           <a
-            href={getWhatsAppLink(product.name)}
+            href={getWhatsAppLink()}
             target="_blank"
             rel="noopener noreferrer"
             className="wa-btn flex items-center justify-center gap-2 text-white text-sm font-semibold tracking-widest uppercase rounded-xl px-6 py-3.5 min-h-[52px] w-full"

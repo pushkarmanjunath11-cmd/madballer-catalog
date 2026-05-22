@@ -30,7 +30,7 @@ export default function ProductCard({ product, index = 0 }: Props) {
         <div className="relative overflow-hidden aspect-[4/3]">
           <Image
             src={product.imageUrl}
-            alt={product.name}
+            alt="Football boot"
             fill
             sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 25vw"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
@@ -40,11 +40,6 @@ export default function ProductCard({ product, index = 0 }: Props) {
 
           {/* Badge */}
           <span className="absolute top-2.5 left-2.5 badge-boots">Boots</span>
-
-          {/* Featured */}
-          {product.featured && (
-            <span className="absolute top-2.5 right-2.5 text-yellow-400 text-base drop-shadow-lg">★</span>
-          )}
 
           {/* Multiple images badge */}
           {totalImages > 1 && (
@@ -70,17 +65,10 @@ export default function ProductCard({ product, index = 0 }: Props) {
           </div>
         </div>
 
-        {/* Info */}
-        <div className="p-3 sm:p-4 space-y-2.5 sm:space-y-3">
-          <h3
-            className="text-white leading-tight text-base sm:text-lg"
-            style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em' }}
-          >
-            {product.name}
-          </h3>
-
+        {/* Order button */}
+        <div className="p-3 sm:p-4">
           <a
-            href={getWhatsAppLink(product.name)}
+            href={getWhatsAppLink()}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

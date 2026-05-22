@@ -3,7 +3,6 @@
 import { useRef } from 'react'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import Image from 'next/image'
-import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import ProductCard from '@/components/ProductCard'
 import Footer from '@/components/Footer'
@@ -28,7 +27,6 @@ export default function HomePage() {
 
   const products = useProductStore((s) => s.products)
   const loading  = useProductStore((s) => s.loading)
-  const featured = products.filter((p) => p.featured).slice(0, 4)
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] overflow-x-hidden">
@@ -112,13 +110,13 @@ export default function HomePage() {
             transition={{ duration: 0.7, delay: 0.8 }}
             className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto"
           >
-            <Link
-              href="/collections"
+            <a
+              href="#boots"
               className="inline-flex items-center justify-center border border-chrome-400/50 hover:border-chrome-200 text-chrome-200 hover:text-white px-7 py-3.5 tracking-widest text-sm uppercase transition-all duration-200 hover:bg-white/5 min-h-[48px] rounded sm:rounded-none"
               style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
             >
               BROWSE BOOTS
-            </Link>
+            </a>
             <a
               href={getWhatsAppLink()}
               target="_blank"
@@ -159,43 +157,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── FEATURED DROPS ── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-10 sm:mb-14"
-        >
-          <span className="text-chrome-600 text-xs tracking-[0.3em] uppercase block mb-3" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-            — TOP PICKS —
-          </span>
-          <h2 className="chrome-text" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(36px, 7vw, 80px)', letterSpacing: '0.06em' }}>
-            FEATURED DROPS
-          </h2>
-        </motion.div>
-
-        {loading ? (
-          <div className="text-center text-chrome-600 text-sm tracking-widest animate-pulse py-14" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-            LOADING...
-          </div>
-        ) : featured.length === 0 ? (
-          <div className="text-center py-14">
-            <p className="text-chrome-600 text-lg tracking-widest mb-2" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO FEATURED BOOTS YET</p>
-            <p className="text-chrome-700 text-sm" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>Add boots in admin and star them to feature here</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
-            {featured.map((product, i) => (
-              <ProductCard key={product.id} product={product} index={i} />
-            ))}
-          </div>
-        )}
-      </section>
-
       {/* ── ALL BOOTS ── */}
-      <section className="bg-[#0d0d0d] border-t border-white/[0.04] py-14 sm:py-20">
+      <section id="boots" className="bg-[#0d0d0d] border-t border-white/[0.04] py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -230,7 +193,7 @@ export default function HomePage() {
               <p className="text-chrome-500 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO BOOTS AVAILABLE YET</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
               {products.map((product, i) => (
                 <ProductCard key={product.id} product={product} index={i} />
               ))}

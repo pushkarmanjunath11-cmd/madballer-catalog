@@ -74,7 +74,7 @@ export default function AdminPage() {
   const [catSuccess, setCatSuccess] = useState(false)
   const catFileRef = useRef<HTMLInputElement>(null)
 
-  const { products, loading, categoryImages, addProduct, removeProduct, toggleFeatured, updateCategoryImage } = useProductStore()
+  const { products, loading, categoryImages, addProduct, removeProduct, updateCategoryImage } = useProductStore()
 
   const handleLogin = () => {
     if (password === ADMIN_PASSWORD) { setAuthed(true); setWrongPw(false) }
@@ -109,7 +109,6 @@ export default function AdminPage() {
         category: 'Boots',
         imageUrl: finalUrl,
         ...(extraImages.length > 0 && { images: extraImages }),
-        featured: false,
       })
       setName(''); setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0)
       setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([])
@@ -248,16 +247,11 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-10 max-w-xs">
-          {[
-            { label: 'TOTAL PAIRS', value: loading ? '…' : products.length },
-            { label: 'FEATURED', value: loading ? '…' : products.filter((p) => p.featured).length },
-          ].map((s) => (
-            <div key={s.label} className="glass-card rounded-xl p-4 sm:p-5 text-center">
-              <div className="chrome-text text-4xl sm:text-5xl leading-none mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{s.value}</div>
-              <div className="text-chrome-600 text-[10px] sm:text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>{s.label}</div>
-            </div>
-          ))}
+        <div className="mb-6 sm:mb-10 max-w-[140px]">
+          <div className="glass-card rounded-xl p-4 sm:p-5 text-center">
+            <div className="chrome-text text-4xl sm:text-5xl leading-none mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{loading ? '…' : products.length}</div>
+            <div className="text-chrome-600 text-[10px] sm:text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>TOTAL PAIRS</div>
+          </div>
         </div>
 
         {/* Firebase badge */}
@@ -490,7 +484,6 @@ export default function AdminPage() {
                     key={product.id}
                     product={product}
                     confirmDeleteId={confirmDeleteId}
-                    onToggle={() => toggleFeatured(product.id)}
                     onAskDelete={() => { setConfirmDeleteId(product.id); setDeleteError('') }}
                     onConfirmDelete={() => handleDelete(product.id)}
                     onCancelDelete={() => setConfirmDeleteId(null)}
@@ -578,13 +571,12 @@ export default function AdminPage() {
 interface ManageCardProps {
   product: Product
   confirmDeleteId: string | null
-  onToggle: () => void
   onAskDelete: () => void
   onConfirmDelete: () => void
   onCancelDelete: () => void
 }
 
-function ManageCard({ product, confirmDeleteId, onToggle, onAskDelete, onConfirmDelete, onCancelDelete }: ManageCardProps) {
+function ManageCard({ product, confirmDeleteId, onAskDelete, onConfirmDelete, onCancelDelete }: ManageCardProps) {
   return (
     <div className="glass-card rounded-xl overflow-hidden">
       <div className="relative aspect-[4/3]">
@@ -600,8 +592,7 @@ function ManageCard({ product, confirmDeleteId, onToggle, onAskDelete, onConfirm
               className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-3 p-3"
             >
               <p className="text-white text-xs tracking-widest text-center leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                DELETE<br />
-                <span className="text-chrome-300">&ldquo;{product.name}&rdquo;</span>?
+                DELETE THIS BOOT?
               </p>
               <div className="flex gap-2">
                 <button onClick={onConfirmDelete}
@@ -618,7 +609,7 @@ function ManageCard({ product, confirmDeleteId, onToggle, onAskDelete, onConfirm
         </AnimatePresence>
       </div>
 
-      {/* Info + always-visible action buttons */}
+      {/* Info + delete button */}
       <div className="p-2.5 sm:p-3">
         <div className="flex items-start justify-between gap-1.5">
           <div className="min-w-0 flex-1">
@@ -626,25 +617,12 @@ function ManageCard({ product, confirmDeleteId, onToggle, onAskDelete, onConfirm
             <p className="text-white text-xs sm:text-sm mt-1 leading-tight truncate" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em' }}>
               {product.name}
             </p>
-            {product.featured && <span className="text-yellow-400 text-[10px]">★ Featured</span>}
           </div>
-          {/* Action buttons — always visible, no hover needed */}
-          <div className="flex gap-1 flex-shrink-0">
-            <button
-              onClick={onToggle}
-              title={product.featured ? 'Unfeature' : 'Feature'}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm transition-all ${
-                product.featured
-                  ? 'bg-yellow-400/20 text-yellow-400 border border-yellow-400/50'
-                  : 'bg-white/8 text-chrome-500 border border-white/12 hover:text-yellow-400 hover:border-yellow-400/40'
-              }`}
-            >★</button>
-            <button
-              onClick={onAskDelete}
-              title="Delete"
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-xs hover:bg-red-500/30 transition-all"
-            >✕</button>
-          </div>
+          <button
+            onClick={onAskDelete}
+            title="Delete"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-xs hover:bg-red-500/30 transition-all flex-shrink-0"
+          >✕</button>
         </div>
       </div>
     </div>

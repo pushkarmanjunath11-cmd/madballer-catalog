@@ -8,7 +8,6 @@ import { getWhatsAppLink } from '@/lib/whatsapp'
 
 const NAV_LINKS = [
   { label: 'HOME', href: '/' },
-  { label: 'SHOP', href: '/collections' },
 ]
 
 export default function Navbar() {
