@@ -1,184 +1,170 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
-import imageCompression from 'browser-image-compression'
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
-import { storage } from '@/lib/firebase'
+import { uploadImage } from '@/lib/uploadImage'
 import { useProductStore, Product } from '@/lib/store'
-import CropModal from '@/components/CropModal'
+import ImageUploadZone from '@/components/ImageUploadZone'
+
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const ADMIN_PASSWORD = 'madballers2024'
+const MAX_EXTRAS = 5
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type Tab = 'upload' | 'manage' | 'categories'
-type UploadPhase = 'compressing' | 'uploading'
 
-// ── Upload to Firebase Storage ────────────────────────────────────────────────
-// Phase 1 (0–50 %): browser-image-compression — max 1600 px, JPEG 0.7, web worker
-// Phase 2 (50–100 %): uploadBytesResumable — real byte progress from Firebase
-async function uploadToStorage(
-  file: File,
-  onProgress: (pct: number) => void,
-  onPhase?: (phase: UploadPhase) => void,
-): Promise<string> {
-  // ── Phase 1: compress ──────────────────────────────
-  onPhase?.('compressing')
-  const compressed = await imageCompression(file, {
-    maxSizeMB: 1,
-    maxWidthOrHeight: 1600,
-    useWebWorker: true,
-    fileType: 'image/jpeg',
-    initialQuality: 0.7,
-    onProgress: (p) => onProgress(Math.round(p * 0.5)),   // 0 → 50
-  })
-
-  // ── Phase 2: upload ────────────────────────────────
-  onPhase?.('uploading')
-  const filename = `${Date.now()}_${file.name.replace(/\.\w+$/, '.jpg')}`
-  return new Promise((resolve, reject) => {
-    const storageRef = ref(storage, `products/${filename}`)
-    const task = uploadBytesResumable(storageRef, compressed, { contentType: 'image/jpeg' })
-    task.on(
-      'state_changed',
-      (snap) => onProgress(50 + Math.round((snap.bytesTransferred / snap.totalBytes) * 50)), // 50 → 100
-      reject,
-      async () => resolve(await getDownloadURL(task.snapshot.ref)),
-    )
-  })
+interface ExtraImage {
+  id: number
+  url: string   // empty until upload completes
+  busy: boolean
 }
 
-// ── Logo image ───────────────────────────────────────
+// ── Shared sub-components ──────────────────────────────────────────────────────
+
 function LogoImg({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   const cls = size === 'lg' ? 'w-20 h-20' : 'w-9 h-9'
   return (
-    <div className={`relative ${cls} rounded-full overflow-hidden flex-shrink-0 ${size === 'lg' ? 'animate-glow-pulse border border-white/10' : ''}`}>
+    <div
+      className={`relative ${cls} rounded-full overflow-hidden flex-shrink-0 ${
+        size === 'lg' ? 'animate-glow-pulse border border-white/10' : ''
+      }`}
+    >
       <Image src="/logo.png" alt="MAD BALLERS" fill className="object-contain" />
     </div>
   )
 }
 
+// ── Admin page ─────────────────────────────────────────────────────────────────
+
 export default function AdminPage() {
-  // ── Auth ──────────────────────────────────────────
-  const [authed, setAuthed]   = useState(false)
+
+  // ── Auth ───────────────────────────────────────────────────────
+  const [authed, setAuthed]     = useState(false)
   const [password, setPassword] = useState('')
-  const [wrongPw, setWrongPw] = useState(false)
+  const [wrongPw, setWrongPw]   = useState(false)
   const [shakeKey, setShakeKey] = useState(0)
 
-  // ── Navigation ────────────────────────────────────
+  // ── Navigation ─────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('upload')
 
-  // ── Upload product form ───────────────────────────
-  const [imageMode, setImageMode] = useState<'url' | 'file'>('file')
-  const [imageUrl, setImageUrl] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [previewSrc, setPreviewSrc] = useState('')
-  const [additionalUrls, setAdditionalUrls] = useState<string[]>([])
-  const [additionalFiles, setAdditionalFiles] = useState<(File | null)[]>([])
-  const [additionalFilePreviews, setAdditionalFilePreviews] = useState<string[]>([])
-  const additionalFileRefs = useRef<(HTMLInputElement | null)[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [uploadPct, setUploadPct] = useState(0)
-  const [uploadPhase, setUploadPhase] = useState<UploadPhase>('compressing')
-  const [uploadSuccess, setUploadSuccess] = useState(false)
-  const [uploadError, setUploadError] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
+  // ── Upload form ────────────────────────────────────────────────
+  // formKey is incremented after a successful submit to unmount/remount all
+  // ImageUploadZone instances, giving each a completely fresh state.
+  const [formKey,      setFormKey]      = useState(0)
+  const [mainUrl,      setMainUrl]      = useState('')   // Firebase URL
+  const [mainPreview,  setMainPreview]  = useState('')   // local data-URL for live preview
+  const [mainBusy,     setMainBusy]     = useState(false)
+  const [extras,       setExtras]       = useState<ExtraImage[]>([])
+  const nextId = useRef(0)
+  const [saving,       setSaving]       = useState(false)
+  const [saveSuccess,  setSaveSuccess]  = useState(false)
+  const [saveError,    setSaveError]    = useState('')
 
-  // ── Crop modal ────────────────────────────────────
-  const [cropSrc,  setCropSrc]  = useState<string | null>(null)
-  const [cropFile, setCropFile] = useState<File | null>(null)
-  // 'main' for main image, number for additional image index
-  const [cropTarget, setCropTarget] = useState<'main' | number>('main')
-
-  // ── Manage products ───────────────────────────────
+  // ── Manage tab ─────────────────────────────────────────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState('')
+  const [deleteError, setDeleteError]         = useState('')
 
-  // ── Category images (Boots only) ─────────────────
-  const [catUrl, setCatUrl] = useState('')
-  const [catFile, setCatFile] = useState<File | null>(null)
+  // ── Categories tab ─────────────────────────────────────────────
+  const [catUrl,     setCatUrl]     = useState('')
+  const [catFile,    setCatFile]    = useState<File | null>(null)
   const [catPreview, setCatPreview] = useState('')
-  const [catSaving, setCatSaving] = useState(false)
+  const [catSaving,  setCatSaving]  = useState(false)
   const [catSuccess, setCatSuccess] = useState(false)
   const catFileRef = useRef<HTMLInputElement>(null)
 
-  const { products, loading, categoryImages, addProduct, removeProduct, updateCategoryImage } = useProductStore()
+  const {
+    products, loading,
+    categoryImages, addProduct, removeProduct, updateCategoryImage,
+  } = useProductStore()
 
-  const handleLogin = () => {
-    if (password === ADMIN_PASSWORD) { setAuthed(true); setWrongPw(false) }
-    else { setWrongPw(true); setShakeKey((k) => k + 1); setPassword('') }
-  }
+  // ── Auth handler ───────────────────────────────────────────────
 
-  // ── Product upload ────────────────────────────────
-  const openCrop = (file: File, target: 'main' | number) => {
-    setCropFile(file)
-    setCropSrc(URL.createObjectURL(file))
-    setCropTarget(target)
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    openCrop(file, 'main')
-  }
-
-  const handleCropConfirm = (croppedFile: File, preview: string) => {
-    if (cropTarget === 'main') {
-      setImageFile(croppedFile)
-      setPreviewSrc(preview)
+  const handleLogin = useCallback(() => {
+    if (password === ADMIN_PASSWORD) {
+      setAuthed(true)
+      setWrongPw(false)
     } else {
-      const idx = cropTarget as number
-      setAdditionalFiles((p) => p.map((f, i) => (i === idx ? croppedFile : f)))
-      setAdditionalFilePreviews((p) => p.map((s, i) => (i === idx ? preview : s)))
+      setWrongPw(true)
+      setShakeKey((k) => k + 1)
+      setPassword('')
     }
-    if (cropSrc) URL.revokeObjectURL(cropSrc)
-    setCropSrc(null); setCropFile(null)
-  }
+  }, [password])
 
-  const handleCropCancel = () => {
-    if (cropSrc) URL.revokeObjectURL(cropSrc)
-    setCropSrc(null); setCropFile(null)
-    // Reset the relevant file input so user can re-pick
-    if (cropTarget === 'main' && fileRef.current) fileRef.current.value = ''
-  }
+  // ── Upload form handlers ───────────────────────────────────────
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!imageUrl && !imageFile) return
-    setUploading(true); setUploadError(''); setUploadPct(0)
+  // Stable callbacks for extras — setExtras functional updater never changes
+  const updateExtraUrl = useCallback((id: number, url: string) => {
+    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, url } : e)))
+  }, [])
+
+  const updateExtraBusy = useCallback((id: number, busy: boolean) => {
+    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, busy } : e)))
+  }, [])
+
+  const removeExtra = useCallback((id: number) => {
+    setExtras((prev) => prev.filter((e) => e.id !== id))
+  }, [])
+
+  const addExtra = useCallback(() => {
+    setExtras((prev) => [
+      ...prev,
+      { id: nextId.current++, url: '', busy: false },
+    ])
+  }, [])
+
+  // Derive gate conditions with useMemo
+  const anyBusy = useMemo(
+    () => mainBusy || extras.some((e) => e.busy),
+    [mainBusy, extras],
+  )
+
+  const canSubmit = useMemo(
+    () => !!mainUrl && !anyBusy && !saving,
+    [mainUrl, anyBusy, saving],
+  )
+
+  const submitLabel = useMemo(() => {
+    if (saving)    return 'SAVING TO FIRESTORE...'
+    if (anyBusy)   return 'UPLOADING...'
+    if (!mainUrl)  return 'SELECT AN IMAGE FIRST'
+    return 'ADD PRODUCT ✓'
+  }, [saving, anyBusy, mainUrl])
+
+  const handleSubmit = useCallback(async () => {
+    if (!canSubmit) return
+    setSaving(true)
+    setSaveError('')
     try {
-      let finalUrl = imageUrl
-      if (imageMode === 'file' && imageFile) {
-        finalUrl = await uploadToStorage(imageFile, setUploadPct, setUploadPhase)
-      }
-      const extraImages: string[] = []
-      if (imageMode === 'url') {
-        extraImages.push(...additionalUrls.map((u) => u.trim()).filter(Boolean))
-      } else {
-        for (const f of additionalFiles) {
-          if (f) extraImages.push(await uploadToStorage(f, () => {}))
-        }
-      }
+      const extraUrls = extras.map((e) => e.url).filter(Boolean)
       await addProduct({
         name: '',
         category: 'Boots',
-        imageUrl: finalUrl,
-        ...(extraImages.length > 0 && { images: extraImages }),
+        imageUrl: mainUrl,
+        ...(extraUrls.length > 0 && { images: extraUrls }),
       })
-      setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0)
-      setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([])
-      setUploadSuccess(true)
-      setTimeout(() => setUploadSuccess(false), 3000)
-    } catch (err: unknown) {
+      // Reset entire form by remounting ImageUploadZones
+      setMainUrl('')
+      setMainPreview('')
+      setMainBusy(false)
+      setExtras([])
+      setFormKey((k) => k + 1)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3500)
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setUploadError(`Upload failed: ${msg}`)
+      setSaveError(`Failed to save: ${msg}`)
+    } finally {
+      setSaving(false)
     }
-    finally { setUploading(false) }
-  }
+  }, [canSubmit, mainUrl, extras, addProduct])
 
-  // ── Product delete ────────────────────────────────
-  const handleDelete = async (id: string) => {
+  // ── Delete handler ─────────────────────────────────────────────
+
+  const handleDelete = useCallback(async (id: string) => {
     setDeleteError('')
     try {
       await removeProduct(id)
@@ -188,35 +174,41 @@ export default function AdminPage() {
       setDeleteError('Firestore blocked the delete — check your security rules.')
       setConfirmDeleteId(null)
     }
-  }
+  }, [removeProduct])
 
-  // ── Category image save ───────────────────────────
-  const handleSaveCatImage = async () => {
+  // ── Category image save ────────────────────────────────────────
+
+  const handleSaveCatImage = useCallback(async () => {
     setCatSaving(true)
     try {
-      let url = catUrl || categoryImages['Boots']
+      let url = catUrl.trim() || categoryImages['Boots']
       if (catFile) {
-        url = await uploadToStorage(catFile, () => {})
+        url = await uploadImage(catFile, 'categories')
         setCatPreview(url)
         setCatFile(null)
+        if (catFileRef.current) catFileRef.current.value = ''
       }
       await updateCategoryImage('Boots', url)
       setCatSuccess(true)
       setTimeout(() => setCatSuccess(false), 3000)
-    } catch { /* silent */ }
-    finally { setCatSaving(false) }
-  }
+    } catch (err) {
+      console.error('Category save failed:', err)
+    } finally {
+      setCatSaving(false)
+    }
+  }, [catUrl, catFile, categoryImages, updateCategoryImage])
 
-  const handleCatFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCatFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setCatFile(file)
     setCatPreview(URL.createObjectURL(file))
-  }
+  }, [])
 
-  // ══════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════
   // LOGIN SCREEN
-  // ══════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════
+
   if (!authed) {
     return (
       <main className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center px-4">
@@ -229,14 +221,23 @@ export default function AdminPage() {
           <div className="flex justify-center mb-6">
             <LogoImg size="lg" />
           </div>
-          <h1 className="chrome-text text-5xl tracking-[0.15em] mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+          <h1
+            className="chrome-text text-5xl tracking-[0.15em] mb-1"
+            style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+          >
             ADMIN
           </h1>
-          <p className="text-chrome-500 text-xs tracking-[0.25em] mb-8" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+          <p
+            className="text-chrome-500 text-xs tracking-[0.25em] mb-8"
+            style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+          >
             BALLER ZONE DASHBOARD
           </p>
 
-          <form onSubmit={(e) => { e.preventDefault(); handleLogin() }} className="space-y-4">
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleLogin() }}
+            className="space-y-4"
+          >
             <input
               type="password"
               autoComplete="off"
@@ -260,12 +261,20 @@ export default function AdminPage() {
                 </motion.p>
               )}
             </AnimatePresence>
-            <button type="submit" className="w-full bg-white text-black font-semibold tracking-[0.2em] text-sm uppercase py-3 rounded-lg hover:bg-chrome-100 transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+            <button
+              type="submit"
+              className="w-full bg-white text-black font-semibold tracking-[0.2em] text-sm uppercase py-3 rounded-lg hover:bg-chrome-100 transition-colors"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
               ENTER
             </button>
           </form>
 
-          <Link href="/" className="inline-block mt-6 text-chrome-600 text-xs tracking-widest hover:text-chrome-400 transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+          <Link
+            href="/"
+            className="inline-block mt-6 text-chrome-600 text-xs tracking-widest hover:text-chrome-400 transition-colors"
+            style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+          >
             ← BACK TO SITE
           </Link>
         </motion.div>
@@ -273,28 +282,22 @@ export default function AdminPage() {
     )
   }
 
-  // ══════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════
   // DASHBOARD
-  // ══════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════
+
   return (
     <main className="min-h-screen bg-[#0a0a0a]">
 
-      {/* ── Crop Modal ── */}
-      {cropSrc && cropFile && (
-        <CropModal
-          src={cropSrc}
-          file={cropFile}
-          onConfirm={handleCropConfirm}
-          onCancel={handleCropCancel}
-        />
-      )}
-
-      {/* Top Nav */}
+      {/* ── Top nav ── */}
       <nav className="glass-card-strong border-b border-white/[0.07] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <LogoImg size="sm" />
-            <span className="chrome-text text-lg sm:text-xl tracking-widest truncate" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+            <span
+              className="chrome-text text-lg sm:text-xl tracking-widest truncate"
+              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+            >
               ADMIN PANEL
             </span>
           </div>
@@ -303,10 +306,18 @@ export default function AdminPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               AUTHENTICATED
             </span>
-            <Link href="/" className="text-chrome-400 text-xs tracking-widest hover:text-white transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+            <Link
+              href="/"
+              className="text-chrome-400 text-xs tracking-widest hover:text-white transition-colors"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
               VIEW SITE
             </Link>
-            <button onClick={() => setAuthed(false)} className="text-chrome-500 text-xs tracking-widest hover:text-white transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+            <button
+              onClick={() => setAuthed(false)}
+              className="text-chrome-500 text-xs tracking-widest hover:text-white transition-colors"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
               LOGOUT
             </button>
           </div>
@@ -318,8 +329,18 @@ export default function AdminPage() {
         {/* Stats */}
         <div className="mb-6 sm:mb-10 max-w-[140px]">
           <div className="glass-card rounded-xl p-4 sm:p-5 text-center">
-            <div className="chrome-text text-4xl sm:text-5xl leading-none mb-1" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>{loading ? '…' : products.length}</div>
-            <div className="text-chrome-600 text-[10px] sm:text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>TOTAL PAIRS</div>
+            <div
+              className="chrome-text text-4xl sm:text-5xl leading-none mb-1"
+              style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+            >
+              {loading ? '…' : products.length}
+            </div>
+            <div
+              className="text-chrome-600 text-[10px] sm:text-xs tracking-widest"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
+              TOTAL PAIRS
+            </div>
           </div>
         </div>
 
@@ -331,13 +352,15 @@ export default function AdminPage() {
           </span>
         </div>
 
-        {/* Tabs — scrollable on mobile */}
+        {/* Tab bar */}
         <div className="flex gap-2 sm:gap-3 mb-6 sm:mb-8 overflow-x-auto pb-1">
-          {([
-            { id: 'upload', label: 'UPLOAD' },
-            { id: 'manage', label: 'MANAGE' },
-            { id: 'categories', label: 'CATEGORIES' },
-          ] as { id: Tab; label: string }[]).map((t) => (
+          {(
+            [
+              { id: 'upload',     label: 'UPLOAD'     },
+              { id: 'manage',     label: 'MANAGE'     },
+              { id: 'categories', label: 'CATEGORIES' },
+            ] as { id: Tab; label: string }[]
+          ).map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
@@ -353,177 +376,200 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* ══ UPLOAD TAB ══ */}
+        {/* ══════════════ UPLOAD TAB ══════════════ */}
         {activeTab === 'upload' && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
+          <motion.div
+            key={`upload-tab-${formKey}`}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
             className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8"
           >
-            {/* Form */}
-            <div className="glass-card rounded-2xl p-5 sm:p-8">
-              <h2 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+            {/* ── Left: Form ── */}
+            <div className="glass-card rounded-2xl p-5 sm:p-8 space-y-5">
+              <h2
+                className="chrome-text text-2xl tracking-widest"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
                 ADD BOOTS
               </h2>
-              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
-                <div>
-                  <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>IMAGE</label>
-                  <div className="flex gap-2 mb-3">
-                    {(['file', 'url'] as const).map((mode) => (
-                      <button key={mode} type="button"
-                        onClick={() => { setImageMode(mode); setPreviewSrc(''); setImageUrl(''); setImageFile(null); setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([]); setUploadError('') }}
-                        className={`px-3 py-1.5 text-xs tracking-widest rounded-full border transition-all ${imageMode === mode ? 'bg-white text-black border-white' : 'border-white/15 text-chrome-400 hover:border-white/30'}`}
-                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >{mode === 'url' ? 'URL' : 'FILE → FIREBASE ★'}</button>
-                    ))}
-                  </div>
-                  {imageMode === 'url' && (
-                    <p className="text-yellow-500/80 text-[10px] tracking-widest mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                      ⚠ WhatsApp image URLs expire — use FILE → FIREBASE instead
-                    </p>
-                  )}
-                  {imageMode === 'url' ? (
-                    <input className="admin-input" placeholder="https://..." value={imageUrl} onChange={(e) => { setImageUrl(e.target.value); setPreviewSrc(e.target.value) }} />
-                  ) : (
-                    <div>
-                      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                      <button type="button" onClick={() => fileRef.current?.click()}
-                        className="w-full border border-dashed border-white/20 rounded-lg py-4 text-chrome-400 text-sm tracking-widest hover:border-white/40 hover:text-white transition-all"
-                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >{imageFile ? imageFile.name : '+ SELECT IMAGE'}</button>
-                      {uploading && (
-                        <div className="mt-3 space-y-1.5">
-                          {/* Track */}
-                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-300 ${uploadPhase === 'compressing' ? 'bg-yellow-400' : 'bg-green-400'}`}
-                              style={{ width: `${uploadPct}%` }}
-                            />
-                          </div>
-                          {/* Label row */}
-                          <div className="flex items-center justify-between">
-                            <p className="text-chrome-500 text-[10px] tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                              {uploadPhase === 'compressing' ? '⚙ COMPRESSING...' : '↑ UPLOADING TO FIREBASE'}
-                            </p>
-                            <p className="text-chrome-600 text-[10px] tabular-nums">{uploadPct}%</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
 
-                {/* Additional images — matches main image mode */}
-                <div>
-                  <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                    ADDITIONAL IMAGES <span className="text-chrome-700">(optional — up to 5)</span>
-                  </label>
-                  <div className="space-y-2">
-                    {imageMode === 'url'
-                      ? additionalUrls.map((url, i) => (
-                          <div key={i} className="flex gap-2">
-                            <input
-                              className="admin-input flex-1 text-sm"
-                              placeholder={`Photo ${i + 2} URL...`}
-                              value={url}
-                              onChange={(e) => setAdditionalUrls((p) => p.map((u, j) => j === i ? e.target.value : u))}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setAdditionalUrls((p) => p.filter((_, j) => j !== i))}
-                              className="w-9 h-9 rounded-lg border border-red-500/20 text-red-400 flex items-center justify-center text-sm hover:bg-red-500/10 transition-colors flex-shrink-0"
-                            >✕</button>
-                          </div>
-                        ))
-                      : additionalFiles.map((file, i) => (
-                          <div key={i} className="flex gap-2">
-                            <input
-                              ref={(el) => { additionalFileRefs.current[i] = el }}
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0]
-                                if (!f) return
-                                openCrop(f, i)
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => additionalFileRefs.current[i]?.click()}
-                              className="flex-1 border border-dashed border-white/20 rounded-lg py-2.5 text-chrome-400 text-xs tracking-widest hover:border-white/40 hover:text-white transition-all truncate px-3"
-                              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                            >
-                              {file ? file.name : `+ PHOTO ${i + 2}`}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAdditionalFiles((p) => p.filter((_, j) => j !== i))
-                                setAdditionalFilePreviews((p) => p.filter((_, j) => j !== i))
-                                additionalFileRefs.current = additionalFileRefs.current.filter((_, j) => j !== i)
-                              }}
-                              className="w-9 h-9 rounded-lg border border-red-500/20 text-red-400 flex items-center justify-center text-sm hover:bg-red-500/10 transition-colors flex-shrink-0"
-                            >✕</button>
-                          </div>
-                        ))
-                    }
-                    {(imageMode === 'url' ? additionalUrls : additionalFiles).length < 5 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (imageMode === 'url') setAdditionalUrls((p) => [...p, ''])
-                          else { setAdditionalFiles((p) => [...p, null]); setAdditionalFilePreviews((p) => [...p, '']) }
-                        }}
-                        className="w-full border border-dashed border-white/15 rounded-lg py-2 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
-                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >+ ADD ANOTHER PHOTO</button>
-                    )}
-                  </div>
-                </div>
-
-                <button type="submit" disabled={uploading || (!imageUrl && !imageFile)}
-                  className="w-full bg-white text-black font-semibold tracking-widest text-sm uppercase py-3 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              {/* Main image zone */}
+              <div>
+                <label
+                  className="text-chrome-500 text-xs tracking-widest block mb-2"
                   style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                 >
-                  {uploading ? 'UPLOADING...' : 'ADD PRODUCT'}
-                </button>
+                  MAIN IMAGE
+                </label>
+                <ImageUploadZone
+                  key={`main-${formKey}`}
+                  folder="products"
+                  label="+ SELECT IMAGE"
+                  sublabel="drag & drop or tap to browse"
+                  onUploaded={setMainUrl}
+                  onPreview={setMainPreview}
+                  onBusyChange={setMainBusy}
+                />
+              </div>
 
-                <AnimatePresence>
-                  {uploadSuccess && (
-                    <motion.p initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                      className="text-green-400 text-sm tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                    >✓ SAVED TO FIRESTORE</motion.p>
+              {/* Additional images */}
+              <div>
+                <label
+                  className="text-chrome-500 text-xs tracking-widest block mb-2"
+                  style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                >
+                  ADDITIONAL IMAGES{' '}
+                  <span className="text-chrome-700">(optional — up to {MAX_EXTRAS})</span>
+                </label>
+
+                <div className="space-y-2">
+                  <AnimatePresence initial={false}>
+                    {extras.map((extra, idx) => (
+                      <motion.div
+                        key={extra.id}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex gap-2"
+                      >
+                        <div className="flex-1">
+                          <ImageUploadZone
+                            compact
+                            folder="products"
+                            label={`+ PHOTO ${idx + 2}`}
+                            onUploaded={(url) => updateExtraUrl(extra.id, url)}
+                            onBusyChange={(busy) => updateExtraBusy(extra.id, busy)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeExtra(extra.id)}
+                          disabled={extra.busy}
+                          className="w-9 h-9 rounded-lg border border-red-500/20 text-red-400 flex-shrink-0 flex items-center justify-center text-sm hover:bg-red-500/10 transition-colors disabled:opacity-30"
+                        >
+                          ✕
+                        </button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+
+                  {extras.length < MAX_EXTRAS && (
+                    <button
+                      type="button"
+                      onClick={addExtra}
+                      className="w-full border border-dashed border-white/15 rounded-lg py-2 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
+                      style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                    >
+                      + ADD ANOTHER PHOTO
+                    </button>
                   )}
-                  {uploadError && (
-                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      className="text-red-400 text-xs tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                    >✕ {uploadError}</motion.p>
-                  )}
-                </AnimatePresence>
-              </form>
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="w-full bg-white text-black font-semibold tracking-widest text-sm uppercase py-3 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+              >
+                {submitLabel}
+              </button>
+
+              {/* Feedback */}
+              <AnimatePresence>
+                {saveSuccess && (
+                  <motion.p
+                    key="ok"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-green-400 text-sm tracking-widest text-center"
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                  >
+                    ✓ SAVED TO FIRESTORE
+                  </motion.p>
+                )}
+                {saveError && (
+                  <motion.p
+                    key="err"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-red-400 text-xs tracking-widest text-center"
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                  >
+                    ✕ {saveError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Live preview */}
+            {/* ── Right: Live preview ── */}
             <div>
-              <h2 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>LIVE PREVIEW</h2>
+              <h2
+                className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6"
+                style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+              >
+                LIVE PREVIEW
+              </h2>
               <div className="glass-card rounded-xl overflow-hidden max-w-xs">
                 <div className="relative aspect-square bg-[#111]">
-                  {previewSrc
-                    ? <Image src={previewSrc} alt="Preview" fill className="object-contain" unoptimized />
-                    : <div className="absolute inset-0 flex items-center justify-center text-chrome-700 text-4xl">👟</div>
-                  }
+                  <AnimatePresence mode="wait">
+                    {mainPreview ? (
+                      <motion.div
+                        key="preview"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="absolute inset-0"
+                      >
+                        <Image
+                          src={mainPreview}
+                          alt="Preview"
+                          fill
+                          className="object-contain"
+                          unoptimized
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="placeholder"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 flex items-center justify-center text-chrome-700 text-4xl"
+                      >
+                        👟
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <div className="p-4 space-y-2">
                   <span className="badge-boots">Boots</span>
-                  <div className="wa-btn rounded-lg py-2 text-center text-white text-xs tracking-widest font-semibold" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>ORDER NOW</div>
+                  <div
+                    className="wa-btn rounded-lg py-2 text-center text-white text-xs tracking-widest font-semibold"
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                  >
+                    ORDER NOW
+                  </div>
                 </div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* ══ MANAGE TAB ══ */}
+        {/* ══════════════ MANAGE TAB ══════════════ */}
         {activeTab === 'manage' && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+          >
             <AnimatePresence>
               {deleteError && (
                 <motion.div
@@ -532,27 +578,58 @@ export default function AdminPage() {
                   exit={{ opacity: 0, y: -12 }}
                   className="mb-5 rounded-xl border border-red-500/40 bg-red-500/10 p-4"
                 >
-                  <p className="text-red-400 text-sm font-semibold tracking-widest mb-1" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                  <p
+                    className="text-red-400 text-sm font-semibold tracking-widest mb-1"
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                  >
                     ✕ DELETE FAILED
                   </p>
-                  <p className="text-red-300/80 text-xs leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                  <p
+                    className="text-red-300/80 text-xs leading-relaxed"
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                  >
                     Firestore rules are blocking writes. Go to{' '}
                     <strong>Firebase Console → Firestore → Rules</strong> and set{' '}
-                    <code className="bg-red-900/40 px-1 rounded text-red-200">allow write: if true;</code> for the products collection.
+                    <code className="bg-red-900/40 px-1 rounded text-red-200">
+                      allow write: if true;
+                    </code>{' '}
+                    for the products collection.
                   </p>
-                  <button onClick={() => setDeleteError('')} className="mt-2 text-red-400/60 text-xs hover:text-red-400 transition-colors">DISMISS ✕</button>
+                  <button
+                    onClick={() => setDeleteError('')}
+                    className="mt-2 text-red-400/60 text-xs hover:text-red-400 transition-colors"
+                  >
+                    DISMISS ✕
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
+
             {loading ? (
               <div className="flex items-center justify-center py-24">
-                <p className="text-chrome-500 text-xl tracking-widest animate-pulse" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>LOADING FROM FIRESTORE...</p>
+                <p
+                  className="text-chrome-500 text-xl tracking-widest animate-pulse"
+                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                >
+                  LOADING FROM FIRESTORE...
+                </p>
               </div>
             ) : products.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 gap-4">
                 <span className="text-5xl">👟</span>
-                <p className="text-chrome-500 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO PRODUCTS YET</p>
-                <button onClick={() => setActiveTab('upload')} className="text-chrome-400 text-sm tracking-widest underline" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>Add your first product</button>
+                <p
+                  className="text-chrome-500 text-lg tracking-widest"
+                  style={{ fontFamily: 'Bebas Neue, sans-serif' }}
+                >
+                  NO PRODUCTS YET
+                </p>
+                <button
+                  onClick={() => setActiveTab('upload')}
+                  className="text-chrome-400 text-sm tracking-widest underline"
+                  style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                >
+                  Add your first product
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
@@ -561,7 +638,10 @@ export default function AdminPage() {
                     key={product.id}
                     product={product}
                     confirmDeleteId={confirmDeleteId}
-                    onAskDelete={() => { setConfirmDeleteId(product.id); setDeleteError('') }}
+                    onAskDelete={() => {
+                      setConfirmDeleteId(product.id)
+                      setDeleteError('')
+                    }}
                     onConfirmDelete={() => handleDelete(product.id)}
                     onCancelDelete={() => setConfirmDeleteId(null)}
                   />
@@ -571,23 +651,40 @@ export default function AdminPage() {
           </motion.div>
         )}
 
-        {/* ══ CATEGORIES TAB ══ */}
+        {/* ══════════════ CATEGORIES TAB ══════════════ */}
         {activeTab === 'categories' && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-            <p className="text-chrome-500 text-sm tracking-widest mb-6" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+          >
+            <p
+              className="text-chrome-500 text-sm tracking-widest mb-6"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
               Update the hero image shown on the Boots section of the homepage.
             </p>
             <div className="max-w-sm">
               <div className="glass-card rounded-2xl overflow-hidden">
                 {/* Current image preview */}
                 <div className="relative aspect-[3/2]">
-                  <Image src={catPreview || categoryImages['Boots']} alt="Boots" fill className="object-cover" unoptimized />
+                  <Image
+                    src={catPreview || categoryImages['Boots']}
+                    alt="Boots"
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                  <h3 className="absolute bottom-3 left-4 chrome-text text-2xl" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.1em' }}>BOOTS</h3>
+                  <h3
+                    className="absolute bottom-3 left-4 chrome-text text-2xl"
+                    style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.1em' }}
+                  >
+                    BOOTS
+                  </h3>
                 </div>
 
                 <div className="p-4 space-y-3">
-                  {/* URL input */}
                   <input
                     className="admin-input text-sm"
                     placeholder="Paste new image URL..."
@@ -598,7 +695,6 @@ export default function AdminPage() {
                     }}
                   />
 
-                  {/* Or upload file */}
                   <div>
                     <input
                       ref={catFileRef}
@@ -628,9 +724,15 @@ export default function AdminPage() {
 
                   <AnimatePresence>
                     {catSuccess && (
-                      <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="text-green-400 text-xs tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >✓ UPDATED LIVE</motion.p>
+                      <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="text-green-400 text-xs tracking-widest text-center"
+                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                      >
+                        ✓ UPDATED LIVE
+                      </motion.p>
                     )}
                   </AnimatePresence>
                 </div>
@@ -644,7 +746,8 @@ export default function AdminPage() {
   )
 }
 
-// ── Extracted product card for manage tab ────────────
+// ── ManageCard ─────────────────────────────────────────────────────────────────
+
 interface ManageCardProps {
   product: Product
   confirmDeleteId: string | null
@@ -653,13 +756,21 @@ interface ManageCardProps {
   onCancelDelete: () => void
 }
 
-function ManageCard({ product, confirmDeleteId, onAskDelete, onConfirmDelete, onCancelDelete }: ManageCardProps) {
+function ManageCard({
+  product, confirmDeleteId,
+  onAskDelete, onConfirmDelete, onCancelDelete,
+}: ManageCardProps) {
   return (
     <div className="glass-card rounded-xl overflow-hidden">
       <div className="relative aspect-[4/3]">
-        <Image src={product.imageUrl} alt={product.name} fill className="object-cover" unoptimized />
+        <Image
+          src={product.imageUrl}
+          alt={product.name}
+          fill
+          className="object-cover"
+          unoptimized
+        />
 
-        {/* Inline delete confirm overlay */}
         <AnimatePresence>
           {confirmDeleteId === product.id && (
             <motion.div
@@ -668,39 +779,42 @@ function ManageCard({ product, confirmDeleteId, onAskDelete, onConfirmDelete, on
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center gap-3 p-3"
             >
-              <p className="text-white text-xs tracking-widest text-center leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+              <p
+                className="text-white text-xs tracking-widest text-center leading-relaxed"
+                style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+              >
                 DELETE THIS BOOT?
               </p>
               <div className="flex gap-2">
-                <button onClick={onConfirmDelete}
+                <button
+                  onClick={onConfirmDelete}
                   className="bg-red-500 text-white px-4 py-1.5 text-xs tracking-widest rounded-lg font-semibold hover:bg-red-400 transition-colors"
                   style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                >YES</button>
-                <button onClick={onCancelDelete}
+                >
+                  YES
+                </button>
+                <button
+                  onClick={onCancelDelete}
                   className="border border-white/30 text-white px-4 py-1.5 text-xs tracking-widest rounded-lg hover:bg-white/10 transition-colors"
                   style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                >NO</button>
+                >
+                  NO
+                </button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Info + delete button */}
-      <div className="p-2.5 sm:p-3">
-        <div className="flex items-start justify-between gap-1.5">
-          <div className="min-w-0 flex-1">
-            <span className="badge-boots text-[9px] sm:text-[10px]">Boots</span>
-            <p className="text-white text-xs sm:text-sm mt-1 leading-tight truncate" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em' }}>
-              {product.name}
-            </p>
-          </div>
-          <button
-            onClick={onAskDelete}
-            title="Delete"
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-xs hover:bg-red-500/30 transition-all flex-shrink-0"
-          >✕</button>
-        </div>
+      <div className="p-2.5 sm:p-3 flex items-center justify-between gap-1.5">
+        <span className="badge-boots text-[9px] sm:text-[10px]">Boots</span>
+        <button
+          onClick={onAskDelete}
+          title="Delete"
+          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center text-xs hover:bg-red-500/30 transition-all flex-shrink-0"
+        >
+          ✕
+        </button>
       </div>
     </div>
   )
