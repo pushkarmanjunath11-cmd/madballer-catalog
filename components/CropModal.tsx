@@ -55,13 +55,19 @@ export default function CropModal({ src, file, onConfirm, onCancel }: Props) {
       if (!drag.current || !containerRef.current) return
       const ev = 'touches' in e ? e.touches[0] : e
       const r  = containerRef.current.getBoundingClientRect()
-      const dx = (ev.clientX - drag.current.mx0) / r.width  * 100
-      const dy = (ev.clientY - drag.current.my0) / r.height * 100
-      const b  = drag.current.box0
+
+      // Destructure everything off the ref NOW, synchronously, before setBox
+      // queues its callback.  By the time React runs that callback, mouseup
+      // may have already fired and set drag.current = null — so the callback
+      // must never touch drag.current at all.
+      const { handle, mx0, my0, box0: b } = drag.current
+
+      const dx = (ev.clientX - mx0) / r.width  * 100
+      const dy = (ev.clientY - my0) / r.height * 100
 
       setBox(() => {
         let { x, y, w, h } = b
-        switch (drag.current!.handle) {
+        switch (handle) {
           case 'new': {
             const rw = clamp(dx, -b.x, 100 - b.x)
             const rh = clamp(dy, -b.y, 100 - b.y)
