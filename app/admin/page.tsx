@@ -114,7 +114,7 @@ export default function AdminPage() {
   // ── Upload form ────────────────────────────────────────────────
   // formKey remounts ImageSlot instances on reset, giving each a clean state
   const [formKey,        setFormKey]        = useState(0)
-  const [imageMode,      setImageMode]      = useState<ImageMode>('url')
+  const [imageMode,      setImageMode]      = useState<ImageMode>('file')
   const [urlInput,       setUrlInput]       = useState('')   // raw text value (url mode only)
   const [mainUrl,        setMainUrl]        = useState('')
   const [mainPreview,    setMainPreview]    = useState('')   // blob URL or direct URL for live preview
@@ -219,6 +219,7 @@ export default function AdminPage() {
         ...(extraUrls.length > 0 && { images: extraUrls }),
       })
       // Reset form — clears all image state and remounts ImageSlot instances
+      setImageMode('file')
       setUrlInput(''); setMainUrl(''); setMainPreview(''); setMainUploading(false)
       setExtras([]); setFormKey(k => k + 1)
       addToast('ok', 'PRODUCT SAVED ✓')

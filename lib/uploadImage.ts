@@ -1,31 +1,41 @@
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { storage } from './firebase'
-
 /**
- * Upload a file to Firebase Storage and return its download URL.
+ * Upload a file to Cloudinary and return its secure URL.
  *
- * Intentionally minimal: uploadBytes → getDownloadURL, nothing else.
- * No compression, no retries, no timeouts, no wrappers.
- *
- * If uploads hang, the root cause is Firebase Storage configuration:
- *   1. CORS not set on the bucket  → run the gsutil command in firebase.ts
- *   2. Storage rules block writes  → set allow read, write: if true
- *   3. Wrong storageBucket name    → must match the bucket in Firebase Console
+ * Uses the unsigned upload API — no SDK, just fetch + FormData.
+ * Configure in .env.local:
+ *   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloud_name
+ *   NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your_unsigned_preset
  */
-export async function uploadImage(file: File, folder = 'products'): Promise<string> {
-  const uid  = Math.random().toString(36).slice(2, 10)
-  const path = `${folder}/${Date.now()}_${uid}.jpg`
+export async function uploadImage(file: File | Blob, folder = 'products'): Promise<string> {
+  const cloud  = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+  const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
 
-  console.log('[uploadImage] started —', file.name, `${(file.size / 1024).toFixed(0)} KB`)
-  console.log('[uploadImage] path:', path)
-  console.log('[uploadImage] bucket:', storage.app.options.storageBucket)
+  if (!cloud || !preset) {
+    throw new Error(
+      'Cloudinary not configured — set NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME and ' +
+      'NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET in .env.local'
+    )
+  }
 
-  const snap = await uploadBytes(ref(storage, path), file, { contentType: 'image/jpeg' })
-  console.log('[uploadImage] upload complete')
+  const form = new FormData()
+  form.append('file', file)
+  form.append('upload_preset', preset)
+  form.append('folder', folder)
 
-  console.log('[uploadImage] getting download URL')
-  const url = await getDownloadURL(snap.ref)
-  console.log('[uploadImage] URL received:', url)
+  const name = file instanceof File ? file.name : 'cropped.jpg'
+  console.log('[uploadImage] uploading to Cloudinary —', name, `(${(file.size / 1024).toFixed(0)} KB)`, 'folder:', folder)
 
-  return url
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloud}/image/upload`,
+    { method: 'POST', body: form }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null)
+    throw new Error(err?.error?.message ?? `Cloudinary upload failed (HTTP ${res.status})`)
+  }
+
+  const data = await res.json()
+  console.log('[uploadImage] done:', data.secure_url)
+  return data.secure_url as string
 }
