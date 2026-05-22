@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef } from 'react'
-import { motion, useScroll, useTransform } from 'framer-motion'
+import { useRef, useMemo, useState } from 'react'
+import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Navbar from '@/components/Navbar'
 import ProductCard from '@/components/ProductCard'
@@ -12,6 +12,9 @@ import { getWhatsAppLink, WA_DISPLAY } from '@/lib/whatsapp'
 const MARQUEE_ITEMS = [
   'BOOTS', 'PREMIUM', 'AUTHENTIC', 'LIMITED DROPS', 'FOOTBALL', 'MAD BALLERS', 'BALLER ZONE', 'TOP QUALITY',
 ]
+
+const PAGE_SIZE = 20
+const FEATURED_COUNT = 5
 
 const WA_ICON = (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 flex-shrink-0">
@@ -27,6 +30,19 @@ export default function HomePage() {
 
   const products = useProductStore((s) => s.products)
   const loading  = useProductStore((s) => s.loading)
+
+  // Random 5 picks — reshuffled fresh every page load
+  const featured = useMemo(() => {
+    if (products.length === 0) return []
+    const shuffled = [...products].sort(() => Math.random() - 0.5)
+    return shuffled.slice(0, Math.min(FEATURED_COUNT, shuffled.length))
+  }, [products])
+
+  // Pagination — show 20 at a time
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const visibleProducts = products.slice(0, visibleCount)
+  const hasMore = visibleCount < products.length
+  const remaining = products.length - visibleCount
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] overflow-x-hidden">
@@ -49,7 +65,6 @@ export default function HomePage() {
         </motion.div>
 
         <div className="relative z-10 flex flex-col items-center text-center px-5 w-full max-w-2xl mx-auto">
-          {/* Logo */}
           <motion.div
             initial={{ opacity: 0, scale: 0.7 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -64,11 +79,7 @@ export default function HomePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
             className="chrome-text leading-none w-full"
-            style={{
-              fontFamily: 'Bebas Neue, sans-serif',
-              fontSize: 'clamp(48px, 14vw, 140px)',
-              letterSpacing: '0.06em',
-            }}
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(48px, 14vw, 140px)', letterSpacing: '0.06em' }}
           >
             MAD BALLERS
           </motion.h1>
@@ -85,11 +96,7 @@ export default function HomePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.5 }}
             className="chrome-text leading-none"
-            style={{
-              fontFamily: 'Bebas Neue, sans-serif',
-              fontSize: 'clamp(18px, 5vw, 44px)',
-              letterSpacing: '0.28em',
-            }}
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(18px, 5vw, 44px)', letterSpacing: '0.28em' }}
           >
             BALLER ZONE
           </motion.p>
@@ -129,7 +136,6 @@ export default function HomePage() {
           </motion.div>
         </div>
 
-        {/* Scroll indicator */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -156,6 +162,35 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* ── FEATURED DROPS ── */}
+      {!loading && featured.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-10 sm:mb-14"
+          >
+            <span className="text-chrome-600 text-xs tracking-[0.3em] uppercase block mb-3" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+              — TODAY&apos;S PICKS —
+            </span>
+            <h2 className="chrome-text" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(36px, 7vw, 80px)', letterSpacing: '0.06em' }}>
+              FEATURED DROPS
+            </h2>
+            <p className="text-chrome-600 text-xs mt-2 tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+              Refreshes every visit
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5">
+            {featured.map((product, i) => (
+              <ProductCard key={product.id} product={product} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── ALL BOOTS ── */}
       <section id="boots" className="bg-[#0d0d0d] border-t border-white/[0.04] py-14 sm:py-20">
@@ -193,11 +228,43 @@ export default function HomePage() {
               <p className="text-chrome-500 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO BOOTS AVAILABLE YET</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
-              {products.map((product, i) => (
-                <ProductCard key={product.id} product={product} index={i} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+                <AnimatePresence initial={false}>
+                  {visibleProducts.map((product, i) => (
+                    <ProductCard key={product.id} product={product} index={i} />
+                  ))}
+                </AnimatePresence>
+              </div>
+
+              {/* View More / count */}
+              <div className="mt-10 sm:mt-14 flex flex-col items-center gap-3">
+                {hasMore ? (
+                  <>
+                    <p className="text-chrome-600 text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      Showing {visibleCount} of {products.length} boots
+                    </p>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                      className="inline-flex items-center gap-2.5 border border-white/20 hover:border-white/50 text-chrome-300 hover:text-white px-8 py-3.5 tracking-[0.2em] text-sm uppercase transition-all duration-200 hover:bg-white/5 rounded-full"
+                      style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                    >
+                      VIEW MORE
+                      <span className="text-chrome-600 text-xs">
+                        +{Math.min(PAGE_SIZE, remaining)}
+                      </span>
+                    </motion.button>
+                  </>
+                ) : (
+                  products.length > PAGE_SIZE && (
+                    <p className="text-chrome-700 text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      All {products.length} boots shown
+                    </p>
+                  )
+                )}
+              </div>
+            </>
           )}
         </div>
       </section>
