@@ -6,7 +6,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { uploadImage } from '@/lib/uploadImage'
 import { useProductStore, Product } from '@/lib/store'
+import { computeImageHash, hammingDistance, DUPLICATE_THRESHOLD } from '@/lib/perceptualHash'
 import ImageSlot from '@/components/ImageSlot'
+import DuplicateModal from '@/components/DuplicateModal'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +125,11 @@ export default function AdminPage() {
   const nextId = useRef(0)
   const [saving,         setSaving]         = useState(false)
 
+  // ── Duplicate detection ────────────────────────────────────────
+  const [dupMatches,   setDupMatches]   = useState<Product[]>([])
+  const [dupResolve,   setDupResolve]   = useState<((ok: boolean) => void) | null>(null)
+  const [pendingHash,  setPendingHash]  = useState<string | null>(null)
+
   // ── Manage tab ─────────────────────────────────────────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -167,6 +174,30 @@ export default function AdminPage() {
     setMainUrl(trimmed)
     setMainPreview(trimmed)   // live preview updates instantly
   }, [])
+
+  // ── Duplicate detection ────────────────────────────────────────
+
+  const handleDuplicateCheck = useCallback(async (blob: Blob): Promise<boolean> => {
+    const hash = await computeImageHash(blob)
+    setPendingHash(hash)
+
+    // Compare against all products that already have a stored fingerprint
+    const matches = products.filter(
+      (p) => p.fingerprint && hammingDistance(p.fingerprint, hash) <= DUPLICATE_THRESHOLD
+    )
+
+    if (matches.length === 0) return true   // no duplicates — proceed
+
+    // Show the warning modal and wait for user decision
+    return new Promise<boolean>((resolve) => {
+      setDupMatches(matches)
+      // Wrap in arrow so React doesn't treat the function as a state updater
+      setDupResolve(() => resolve)
+    })
+  }, [products])
+
+  const confirmDup  = useCallback(() => { dupResolve?.(true);  setDupMatches([]); setDupResolve(null) }, [dupResolve])
+  const cancelDup   = useCallback(() => { dupResolve?.(false); setDupMatches([]); setDupResolve(null) }, [dupResolve])
 
   // ── Extra slot helpers ─────────────────────────────────────────
 
@@ -217,11 +248,12 @@ export default function AdminPage() {
         category: 'Boots',
         imageUrl: mainUrl,
         ...(extraUrls.length > 0 && { images: extraUrls }),
+        ...(pendingHash         && { fingerprint: pendingHash }),
       })
       // Reset form — clears all image state and remounts ImageSlot instances
       setImageMode('file')
       setUrlInput(''); setMainUrl(''); setMainPreview(''); setMainUploading(false)
-      setExtras([]); setFormKey(k => k + 1)
+      setExtras([]); setPendingHash(null); setFormKey(k => k + 1)
       addToast('ok', 'PRODUCT SAVED ✓')
     } catch (err) {
       addToast('err', `Save failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -348,6 +380,17 @@ export default function AdminPage() {
     <main className="min-h-screen bg-[#0a0a0a]">
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
+      <AnimatePresence>
+        {dupMatches.length > 0 && (
+          <DuplicateModal
+            key="dup-modal"
+            matches={dupMatches}
+            onProceed={confirmDup}
+            onCancel={cancelDup}
+          />
+        )}
+      </AnimatePresence>
 
       {/* ── Nav ── */}
       <nav className="glass-card-strong border-b border-white/[0.07] sticky top-0 z-40">
@@ -521,6 +564,7 @@ export default function AdminPage() {
                         onUrl={setMainUrl}
                         onPreview={setMainPreview}
                         onBusyChange={setMainUploading}
+                        checkDuplicate={handleDuplicateCheck}
                       />
                     </motion.div>
                   )}

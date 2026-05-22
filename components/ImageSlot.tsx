@@ -14,6 +14,11 @@ interface Props {
   onPreview?: (blobUrl: string) => void
   /** Called when upload starts or finishes — use to gate form submission */
   onBusyChange?: (busy: boolean) => void
+  /**
+   * Optional duplicate check hook. Called with the cropped blob after the user
+   * confirms the crop. Return true to proceed with upload, false to cancel.
+   */
+  checkDuplicate?: (blob: Blob) => Promise<boolean>
   /** Cloudinary sub-folder */
   folder?: string
   /** Primary label shown in idle state */
@@ -32,6 +37,7 @@ export default function ImageSlot({
   onUrl,
   onPreview,
   onBusyChange,
+  checkDuplicate,
   folder    = 'products',
   label     = '+ SELECT IMAGE',
   sublabel  = 'drag & drop or tap to browse',
@@ -113,13 +119,24 @@ export default function ImageSlot({
     setShowCrop(true)
   }, [])
 
-  // ── Crop confirmed → upload ────────────────────────────────────────
+  // ── Crop confirmed → duplicate check → upload ─────────────────────
 
-  const handleCropDone = useCallback((blob: Blob) => {
-    // Close modal first — the exit animation can still use cropSrcRef's URL
+  const handleCropDone = useCallback(async (blob: Blob) => {
+    // Close crop modal first (exit animation can still use cropSrcRef's URL)
     setShowCrop(false)
+
+    // Optional duplicate check — parent resolves the promise with true/false
+    if (checkDuplicate) {
+      const ok = await checkDuplicate(blob)
+      if (!ok) {
+        // User cancelled — go back to idle cleanly
+        setStatus('idle')
+        return
+      }
+    }
+
     uploadBlob(blob)
-  }, [uploadBlob])
+  }, [uploadBlob, checkDuplicate])
 
   // ── Crop cancelled → back to idle ─────────────────────────────────
 

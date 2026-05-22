@@ -23,6 +23,8 @@ export interface Product {
   imageUrl: string
   images?: string[]
   createdAt: string
+  /** aHash perceptual fingerprint (64-char binary string) — used for duplicate detection */
+  fingerprint?: string
 }
 
 export const DEFAULT_CATEGORY_IMAGES: CategoryImages = {
