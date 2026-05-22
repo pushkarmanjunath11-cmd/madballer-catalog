@@ -100,9 +100,11 @@ export default function ImageSlot({
     }
   }, [folder, onUrl, onBusyChange, applyPreview])
 
-  // ── File selected → open crop modal ───────────────────────────────
+  // ── File selected → duplicate check → open crop modal ────────────
+  // The hash is computed from the ORIGINAL file here (before any cropping)
+  // so two uploads of the same boot are always caught, regardless of crop position.
 
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       console.warn('[ImageSlot] rejected — invalid type:', file.type)
       setError('Please select an image file (JPG, PNG, WEBP)')
@@ -111,32 +113,32 @@ export default function ImageSlot({
     }
     console.log('[ImageSlot] file accepted:', file.name, `(${(file.size / 1024).toFixed(0)} KB)`)
 
+    // Run duplicate check on the raw file BEFORE opening crop modal.
+    // Using the original file means the hash is crop-independent.
+    if (checkDuplicate) {
+      try {
+        const ok = await checkDuplicate(file)
+        if (!ok) return   // user cancelled — stay at idle
+      } catch (err) {
+        console.warn('[ImageSlot] checkDuplicate threw — proceeding anyway:', err)
+      }
+    }
+
     // Revoke any previous crop-modal blob URL before creating a new one
     if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current)
     const blobUrl = URL.createObjectURL(file)
     cropSrcRef.current = blobUrl
     setCropSrc(blobUrl)
     setShowCrop(true)
-  }, [])
+  }, [checkDuplicate])
 
-  // ── Crop confirmed → duplicate check → upload ─────────────────────
+  // ── Crop confirmed → upload ────────────────────────────────────────
 
-  const handleCropDone = useCallback(async (blob: Blob) => {
-    // Close crop modal first (exit animation can still use cropSrcRef's URL)
+  const handleCropDone = useCallback((blob: Blob) => {
+    // Close crop modal (exit animation can still use cropSrcRef's URL)
     setShowCrop(false)
-
-    // Optional duplicate check — parent resolves the promise with true/false
-    if (checkDuplicate) {
-      const ok = await checkDuplicate(blob)
-      if (!ok) {
-        // User cancelled — go back to idle cleanly
-        setStatus('idle')
-        return
-      }
-    }
-
     uploadBlob(blob)
-  }, [uploadBlob, checkDuplicate])
+  }, [uploadBlob])
 
   // ── Crop cancelled → back to idle ─────────────────────────────────
 

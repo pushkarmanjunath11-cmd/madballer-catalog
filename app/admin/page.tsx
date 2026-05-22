@@ -128,7 +128,8 @@ export default function AdminPage() {
   // ── Duplicate detection ────────────────────────────────────────
   const [dupMatches,   setDupMatches]   = useState<Product[]>([])
   const [dupResolve,   setDupResolve]   = useState<((ok: boolean) => void) | null>(null)
-  const [pendingHash,  setPendingHash]  = useState<string | null>(null)
+  // Ref (not state) so handleSubmit always reads the latest value without stale-closure risk
+  const pendingHashRef = useRef<string | null>(null)
 
   // ── Manage tab ─────────────────────────────────────────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -178,22 +179,28 @@ export default function AdminPage() {
   // ── Duplicate detection ────────────────────────────────────────
 
   const handleDuplicateCheck = useCallback(async (blob: Blob): Promise<boolean> => {
-    const hash = await computeImageHash(blob)
-    setPendingHash(hash)
+    try {
+      const hash = await computeImageHash(blob)
+      // Store in ref so handleSubmit always reads the current value
+      pendingHashRef.current = hash
 
-    // Compare against all products that already have a stored fingerprint
-    const matches = products.filter(
-      (p) => p.fingerprint && hammingDistance(p.fingerprint, hash) <= DUPLICATE_THRESHOLD
-    )
+      // Compare against all products that already have a stored fingerprint
+      const matches = products.filter(
+        (p) => p.fingerprint && hammingDistance(p.fingerprint, hash) <= DUPLICATE_THRESHOLD
+      )
 
-    if (matches.length === 0) return true   // no duplicates — proceed
+      if (matches.length === 0) return true   // no duplicates — proceed
 
-    // Show the warning modal and wait for user decision
-    return new Promise<boolean>((resolve) => {
-      setDupMatches(matches)
-      // Wrap in arrow so React doesn't treat the function as a state updater
-      setDupResolve(() => resolve)
-    })
+      // Show the warning modal and wait for user decision
+      return new Promise<boolean>((resolve) => {
+        setDupMatches(matches)
+        // Wrap in arrow so React doesn't treat the function as a state updater
+        setDupResolve(() => resolve)
+      })
+    } catch (err) {
+      console.warn('[DuplicateCheck] hash failed — skipping check:', err)
+      return true   // never block the upload if hashing fails
+    }
   }, [products])
 
   const confirmDup  = useCallback(() => { dupResolve?.(true);  setDupMatches([]); setDupResolve(null) }, [dupResolve])
@@ -248,12 +255,12 @@ export default function AdminPage() {
         category: 'Boots',
         imageUrl: mainUrl,
         ...(extraUrls.length > 0 && { images: extraUrls }),
-        ...(pendingHash         && { fingerprint: pendingHash }),
+        ...(pendingHashRef.current && { fingerprint: pendingHashRef.current }),
       })
       // Reset form — clears all image state and remounts ImageSlot instances
       setImageMode('file')
       setUrlInput(''); setMainUrl(''); setMainPreview(''); setMainUploading(false)
-      setExtras([]); setPendingHash(null); setFormKey(k => k + 1)
+      setExtras([]); pendingHashRef.current = null; setFormKey(k => k + 1)
       addToast('ok', 'PRODUCT SAVED ✓')
     } catch (err) {
       addToast('err', `Save failed: ${err instanceof Error ? err.message : String(err)}`)
