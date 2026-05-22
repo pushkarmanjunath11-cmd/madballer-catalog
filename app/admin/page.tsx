@@ -4,10 +4,13 @@ import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
-import { storage } from '@/lib/firebase'
 import { useProductStore, Product } from '@/lib/store'
 import CropModal from '@/components/CropModal'
+
+// ── Cloudinary config ─────────────────────────────────
+// After setup paste your values here (see admin → setup guide below)
+const CLOUDINARY_CLOUD_NAME   = 'YOUR_CLOUD_NAME'
+const CLOUDINARY_UPLOAD_PRESET = 'YOUR_UNSIGNED_PRESET'
 
 const ADMIN_PASSWORD = 'madballers2024'
 
@@ -38,18 +41,31 @@ function compressImage(file: File, maxPx = 1200): Promise<File> {
   })
 }
 
-// ── Reusable upload helper ───────────────────────────
-async function uploadToStorage(file: File, onProgress: (n: number) => void): Promise<string> {
+// ── Upload via Cloudinary (free tier — no credit card) ──
+async function uploadToCloudinary(file: File, onProgress: (n: number) => void): Promise<string> {
+  if (CLOUDINARY_CLOUD_NAME === 'YOUR_CLOUD_NAME') {
+    throw new Error('CLOUDINARY_NOT_CONFIGURED')
+  }
   const compressed = await compressImage(file)
   return new Promise((resolve, reject) => {
-    const storageRef = ref(storage, `products/${Date.now()}_${compressed.name}`)
-    const task = uploadBytesResumable(storageRef, compressed)
-    task.on(
-      'state_changed',
-      (s) => onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
-      reject,
-      async () => resolve(await getDownloadURL(task.snapshot.ref))
-    )
+    const fd = new FormData()
+    fd.append('file', compressed)
+    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+    const xhr = new XMLHttpRequest()
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100))
+    }
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url)
+      } else {
+        const body = xhr.responseText
+        reject(new Error(body.includes('preset') ? 'Invalid upload preset — check Cloudinary settings' : `Upload failed (${xhr.status})`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Network error — check your internet connection'))
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`)
+    xhr.send(fd)
   })
 }
 
@@ -153,13 +169,13 @@ export default function AdminPage() {
     setUploading(true); setUploadError('')
     try {
       let finalUrl = imageUrl
-      if (imageMode === 'file' && imageFile) finalUrl = await uploadToStorage(imageFile, setUploadPct)
+      if (imageMode === 'file' && imageFile) finalUrl = await uploadToCloudinary(imageFile, setUploadPct)
       const extraImages: string[] = []
       if (imageMode === 'url') {
         extraImages.push(...additionalUrls.map((u) => u.trim()).filter(Boolean))
       } else {
         for (const f of additionalFiles) {
-          if (f) extraImages.push(await uploadToStorage(f, () => {}))
+          if (f) extraImages.push(await uploadToCloudinary(f, () => {}))
         }
       }
       await addProduct({
@@ -174,8 +190,8 @@ export default function AdminPage() {
       setTimeout(() => setUploadSuccess(false), 3000)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes('permission') || msg.includes('unauthorized') || msg.includes('rules')) {
-        setUploadError('FIREBASE STORAGE RULES BLOCKING UPLOAD — see instructions below')
+      if (msg === 'CLOUDINARY_NOT_CONFIGURED') {
+        setUploadError('Cloudinary not set up yet — see setup guide below')
         setShowRulesHelp(true)
       } else {
         setUploadError(`Upload failed: ${msg}`)
@@ -203,7 +219,7 @@ export default function AdminPage() {
     try {
       let url = catUrl || categoryImages['Boots']
       if (catFile) {
-        url = await uploadToStorage(catFile, () => {})
+        url = await uploadToCloudinary(catFile, () => {})
         setCatPreview(url)
         setCatFile(null)
       }
@@ -370,6 +386,16 @@ export default function AdminPage() {
               <h2 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                 ADD BOOTS
               </h2>
+              {CLOUDINARY_CLOUD_NAME === 'YOUR_CLOUD_NAME' && (
+                <div className="mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/8 p-3">
+                  <p className="text-yellow-400 text-[11px] font-semibold tracking-widest mb-1" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                    ⚠ IMAGE UPLOAD NOT CONFIGURED
+                  </p>
+                  <p className="text-yellow-300/70 text-[10px] leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                    Sign up free at <strong className="text-yellow-300">cloudinary.com</strong>, create an unsigned upload preset, then send me your Cloud Name + Preset Name to activate file uploads.
+                  </p>
+                </div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 <div>
                   <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>IMAGE</label>
@@ -500,30 +526,19 @@ export default function AdminPage() {
                       className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 text-left space-y-2"
                     >
                       <p className="text-yellow-400 text-xs font-semibold tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        HOW TO FIX — FIREBASE STORAGE RULES
+                        CLOUDINARY SETUP (FREE — NO CREDIT CARD)
                       </p>
-                      <ol className="text-yellow-300/70 text-[11px] leading-relaxed space-y-1 list-decimal list-inside" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        <li>Go to <strong className="text-yellow-300">console.firebase.google.com</strong></li>
-                        <li>Select project <strong className="text-yellow-300">madballers-catalog</strong></li>
-                        <li>Click <strong className="text-yellow-300">Storage</strong> in the left menu</li>
-                        <li>Click the <strong className="text-yellow-300">Rules</strong> tab</li>
-                        <li>Replace all the text with this:</li>
+                      <ol className="text-yellow-300/80 text-[11px] leading-relaxed space-y-1.5 list-decimal list-inside" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        <li>Go to <strong className="text-yellow-300">cloudinary.com</strong> → Sign Up Free</li>
+                        <li>After login, your <strong className="text-yellow-300">Cloud Name</strong> is shown in the dashboard top-left</li>
+                        <li>Go to <strong className="text-yellow-300">Settings → Upload</strong> (gear icon)</li>
+                        <li>Scroll to <strong className="text-yellow-300">Upload presets</strong> → click <strong className="text-yellow-300">Add upload preset</strong></li>
+                        <li>Set <strong className="text-yellow-300">Signing mode</strong> to <strong className="text-yellow-300">Unsigned</strong> → Save</li>
+                        <li>Note the <strong className="text-yellow-300">Preset name</strong> (e.g. ml_default)</li>
+                        <li>Tell me your cloud name + preset name and I&apos;ll add them to the code</li>
                       </ol>
-                      <pre className="bg-black/40 rounded-lg p-3 text-green-400 text-[10px] leading-relaxed overflow-x-auto">
-{`rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
-                      </pre>
-                      <p className="text-yellow-300/70 text-[10px] leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        6. Click <strong className="text-yellow-300">Publish</strong> — then try uploading again.
-                      </p>
-                      <p className="text-yellow-500/50 text-[9px] tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        Also do the same in Firestore → Rules if deleting/adding fails.
+                      <p className="text-yellow-500/60 text-[9px] tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                        Free tier: 25 GB storage · 25 GB bandwidth/month · no expiry
                       </p>
                       <button onClick={() => setShowRulesHelp(false)} className="text-yellow-500/50 text-[10px] hover:text-yellow-400 transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
                         DISMISS ✕
