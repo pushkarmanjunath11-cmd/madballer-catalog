@@ -8,6 +8,7 @@ import { getWhatsAppLink } from '@/lib/whatsapp'
 
 const NAV_LINKS = [
   { label: 'HOME', href: '/' },
+  { label: 'COLLECTIONS', href: '/collections' },
 ]
 
 export default function Navbar() {
@@ -94,25 +95,44 @@ export default function Navbar() {
               href={getWhatsAppLink()}
               target="_blank"
               rel="noopener noreferrer"
-              className="sm:hidden wa-btn w-9 h-9 rounded-full flex items-center justify-center"
+              className="sm:hidden wa-btn w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
             >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
                 <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.558 4.116 1.535 5.845L.057 23.95l6.244-1.637A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 01-4.99-1.366l-.358-.212-3.708.973.989-3.616-.232-.372A9.818 9.818 0 0112 2.182c5.423 0 9.818 4.395 9.818 9.818 0 5.422-4.395 9.818-9.818 9.818z" />
               </svg>
             </a>
 
-            {/* Hamburger */}
+            {/* Hamburger — animates to ✕ when open */}
             <button
-              onClick={() => setMenuOpen(true)}
-              className="md:hidden text-white p-2 -mr-1"
-              aria-label="Open menu"
+              onClick={() => setMenuOpen((o) => !o)}
+              className="md:hidden text-white p-2 -mr-1 w-10 h-10 flex flex-col items-center justify-center gap-1.5"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
             >
-              <div className="space-y-1.5">
-                <span className="block w-6 h-0.5 bg-chrome-300" />
-                <span className="block w-4 h-0.5 bg-chrome-300 ml-auto" />
-                <span className="block w-6 h-0.5 bg-chrome-300" />
-              </div>
+              <span
+                className="block h-0.5 bg-chrome-300 origin-center transition-all duration-300"
+                style={{
+                  width: '24px',
+                  transform: menuOpen ? 'translateY(8px) rotate(45deg)' : 'none',
+                }}
+              />
+              <span
+                className="block h-0.5 bg-chrome-300 transition-all duration-300"
+                style={{
+                  width: '16px',
+                  marginLeft: 'auto',
+                  opacity: menuOpen ? 0 : 1,
+                  transform: menuOpen ? 'scaleX(0)' : 'none',
+                }}
+              />
+              <span
+                className="block h-0.5 bg-chrome-300 origin-center transition-all duration-300"
+                style={{
+                  width: '24px',
+                  transform: menuOpen ? 'translateY(-8px) rotate(-45deg)' : 'none',
+                }}
+              />
             </button>
           </div>
         </div>

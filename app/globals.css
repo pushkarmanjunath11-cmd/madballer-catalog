@@ -51,6 +51,10 @@
   transform: translateY(-6px) scale(1.01);
   box-shadow: 0 8px 40px rgba(192, 192, 192, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
+.product-card:active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
 
 /* ─── WhatsApp Button ─── */
 .wa-btn {
@@ -60,6 +64,37 @@
 .wa-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 24px rgba(37, 211, 102, 0.4);
+}
+.wa-btn:active {
+  transform: scale(0.96) translateY(0) !important;
+  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.3) !important;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+/* ─── Mobile Touch Optimizations ─── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* On real touch devices: disable hover states that otherwise stick after tap */
+@media (hover: none) {
+  .product-card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .wa-btn:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .animated-underline:hover::after {
+    width: 0;
+  }
 }
 
 /* ─── Category Badges ─── */

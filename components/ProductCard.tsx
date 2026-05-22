@@ -22,6 +22,7 @@ export default function ProductCard({ product, index = 0 }: Props) {
         initial={{ opacity: 0, y: 40 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-40px' }}
+        whileTap={{ scale: 0.97 }}
         transition={{ duration: 0.5, delay: Math.min(index * 0.07, 0.35), ease: 'easeOut' }}
         className="product-card glass-card rounded-xl overflow-hidden group cursor-pointer"
         onClick={() => setModalOpen(true)}
@@ -72,7 +73,7 @@ export default function ProductCard({ product, index = 0 }: Props) {
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="wa-btn flex items-center justify-center gap-2 text-white font-semibold tracking-widest text-xs uppercase rounded-lg py-2.5 sm:py-3 min-h-[42px]"
+            className="wa-btn flex items-center justify-center gap-2 text-white font-semibold tracking-widest text-xs uppercase rounded-lg py-3 sm:py-3 min-h-[48px]"
             style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
           >
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 flex-shrink-0">
