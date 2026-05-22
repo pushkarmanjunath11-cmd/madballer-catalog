@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
+import imageCompression from 'browser-image-compression'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
 import { useProductStore, Product } from '@/lib/store'
@@ -12,43 +13,38 @@ import CropModal from '@/components/CropModal'
 const ADMIN_PASSWORD = 'madballers2024'
 
 type Tab = 'upload' | 'manage' | 'categories'
+type UploadPhase = 'compressing' | 'uploading'
 
-// ── Compress image before upload (canvas resize → JPEG 75%) ──
-function compressImage(file: File, maxPx = 1200): Promise<File> {
-  return new Promise((resolve) => {
-    const img = new window.Image()
-    const url = URL.createObjectURL(file)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      let { width, height } = img
-      if (width > maxPx || height > maxPx) {
-        if (width >= height) { height = Math.round((height / width) * maxPx); width = maxPx }
-        else { width = Math.round((width / height) * maxPx); height = maxPx }
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width; canvas.height = height
-      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        (blob) => resolve(blob ? new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }) : file),
-        'image/jpeg', 0.75
-      )
-    }
-    img.onerror = () => resolve(file) // fallback: use original
-    img.src = url
+// ── Upload to Firebase Storage ────────────────────────────────────────────────
+// Phase 1 (0–50 %): browser-image-compression — max 1600 px, JPEG 0.7, web worker
+// Phase 2 (50–100 %): uploadBytesResumable — real byte progress from Firebase
+async function uploadToStorage(
+  file: File,
+  onProgress: (pct: number) => void,
+  onPhase?: (phase: UploadPhase) => void,
+): Promise<string> {
+  // ── Phase 1: compress ──────────────────────────────
+  onPhase?.('compressing')
+  const compressed = await imageCompression(file, {
+    maxSizeMB: 1,
+    maxWidthOrHeight: 1600,
+    useWebWorker: true,
+    fileType: 'image/jpeg',
+    initialQuality: 0.7,
+    onProgress: (p) => onProgress(Math.round(p * 0.5)),   // 0 → 50
   })
-}
 
-// ── Upload to Firebase Storage ───────────────────────
-async function uploadToCloudinary(file: File, onProgress: (n: number) => void): Promise<string> {
-  const compressed = await compressImage(file)
+  // ── Phase 2: upload ────────────────────────────────
+  onPhase?.('uploading')
+  const filename = `${Date.now()}_${file.name.replace(/\.\w+$/, '.jpg')}`
   return new Promise((resolve, reject) => {
-    const storageRef = ref(storage, `products/${Date.now()}_${compressed.name}`)
-    const task = uploadBytesResumable(storageRef, compressed)
+    const storageRef = ref(storage, `products/${filename}`)
+    const task = uploadBytesResumable(storageRef, compressed, { contentType: 'image/jpeg' })
     task.on(
       'state_changed',
-      (s) => onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
+      (snap) => onProgress(50 + Math.round((snap.bytesTransferred / snap.totalBytes) * 50)), // 50 → 100
       reject,
-      async () => resolve(await getDownloadURL(task.snapshot.ref))
+      async () => resolve(await getDownloadURL(task.snapshot.ref)),
     )
   })
 }
@@ -84,6 +80,7 @@ export default function AdminPage() {
   const additionalFileRefs = useRef<(HTMLInputElement | null)[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<UploadPhase>('compressing')
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -149,16 +146,18 @@ export default function AdminPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!imageUrl && !imageFile) return
-    setUploading(true); setUploadError('')
+    setUploading(true); setUploadError(''); setUploadPct(0)
     try {
       let finalUrl = imageUrl
-      if (imageMode === 'file' && imageFile) finalUrl = await uploadToCloudinary(imageFile, setUploadPct)
+      if (imageMode === 'file' && imageFile) {
+        finalUrl = await uploadToStorage(imageFile, setUploadPct, setUploadPhase)
+      }
       const extraImages: string[] = []
       if (imageMode === 'url') {
         extraImages.push(...additionalUrls.map((u) => u.trim()).filter(Boolean))
       } else {
         for (const f of additionalFiles) {
-          if (f) extraImages.push(await uploadToCloudinary(f, () => {}))
+          if (f) extraImages.push(await uploadToStorage(f, () => {}))
         }
       }
       await addProduct({
@@ -197,7 +196,7 @@ export default function AdminPage() {
     try {
       let url = catUrl || categoryImages['Boots']
       if (catFile) {
-        url = await uploadToCloudinary(catFile, () => {})
+        url = await uploadToStorage(catFile, () => {})
         setCatPreview(url)
         setCatFile(null)
       }
@@ -390,12 +389,22 @@ export default function AdminPage() {
                         className="w-full border border-dashed border-white/20 rounded-lg py-4 text-chrome-400 text-sm tracking-widest hover:border-white/40 hover:text-white transition-all"
                         style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                       >{imageFile ? imageFile.name : '+ SELECT IMAGE'}</button>
-                      {uploading && uploadPct > 0 && (
-                        <div className="mt-2">
-                          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                            <div className="h-full bg-green-400 transition-all" style={{ width: `${uploadPct}%` }} />
+                      {uploading && (
+                        <div className="mt-3 space-y-1.5">
+                          {/* Track */}
+                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${uploadPhase === 'compressing' ? 'bg-yellow-400' : 'bg-green-400'}`}
+                              style={{ width: `${uploadPct}%` }}
+                            />
                           </div>
-                          <p className="text-chrome-500 text-xs mt-1 tracking-widest">UPLOADING {uploadPct}%</p>
+                          {/* Label row */}
+                          <div className="flex items-center justify-between">
+                            <p className="text-chrome-500 text-[10px] tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
+                              {uploadPhase === 'compressing' ? '⚙ COMPRESSING...' : '↑ UPLOADING TO FIREBASE'}
+                            </p>
+                            <p className="text-chrome-600 text-[10px] tabular-nums">{uploadPct}%</p>
+                          </div>
                         </div>
                       )}
                     </div>
