@@ -78,7 +78,7 @@ export default function ProductModal({ product, onClose }: Props) {
                 src={allImages[current]}
                 alt={`Boot photo ${current + 1}`}
                 fill
-                className="object-contain"
+                className="object-cover"
                 unoptimized
               />
             </motion.div>

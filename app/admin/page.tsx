@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { storage } from '@/lib/firebase'
 import { useProductStore, Product } from '@/lib/store'
+import CropModal from '@/components/CropModal'
 
 const ADMIN_PASSWORD = 'madballers2024'
 
@@ -87,6 +88,12 @@ export default function AdminPage() {
   const [uploadError, setUploadError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // ── Crop modal ────────────────────────────────────
+  const [cropSrc,  setCropSrc]  = useState<string | null>(null)
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  // 'main' for main image, number for additional image index
+  const [cropTarget, setCropTarget] = useState<'main' | number>('main')
+
   // ── Manage products ───────────────────────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState('')
@@ -107,11 +114,36 @@ export default function AdminPage() {
   }
 
   // ── Product upload ────────────────────────────────
+  const openCrop = (file: File, target: 'main' | number) => {
+    setCropFile(file)
+    setCropSrc(URL.createObjectURL(file))
+    setCropTarget(target)
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setImageFile(file)
-    setPreviewSrc(URL.createObjectURL(file))
+    openCrop(file, 'main')
+  }
+
+  const handleCropConfirm = (croppedFile: File, preview: string) => {
+    if (cropTarget === 'main') {
+      setImageFile(croppedFile)
+      setPreviewSrc(preview)
+    } else {
+      const idx = cropTarget as number
+      setAdditionalFiles((p) => p.map((f, i) => (i === idx ? croppedFile : f)))
+      setAdditionalFilePreviews((p) => p.map((s, i) => (i === idx ? preview : s)))
+    }
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null); setCropFile(null)
+  }
+
+  const handleCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null); setCropFile(null)
+    // Reset the relevant file input so user can re-pick
+    if (cropTarget === 'main' && fileRef.current) fileRef.current.value = ''
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -244,6 +276,16 @@ export default function AdminPage() {
   // ══════════════════════════════════════════════════
   return (
     <main className="min-h-screen bg-[#0a0a0a]">
+
+      {/* ── Crop Modal ── */}
+      {cropSrc && cropFile && (
+        <CropModal
+          src={cropSrc}
+          file={cropFile}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
 
       {/* Top Nav */}
       <nav className="glass-card-strong border-b border-white/[0.07] sticky top-0 z-40">
@@ -384,8 +426,7 @@ export default function AdminPage() {
                               onChange={(e) => {
                                 const f = e.target.files?.[0]
                                 if (!f) return
-                                setAdditionalFiles((p) => p.map((x, j) => j === i ? f : x))
-                                setAdditionalFilePreviews((p) => p.map((x, j) => j === i ? URL.createObjectURL(f) : x))
+                                openCrop(f, i)
                               }}
                             />
                             <button

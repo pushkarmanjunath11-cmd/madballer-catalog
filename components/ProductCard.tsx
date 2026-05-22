@@ -33,7 +33,7 @@ export default function ProductCard({ product, index = 0 }: Props) {
             alt="Football boot"
             fill
             sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 25vw"
-            className="object-contain transition-transform duration-500 group-hover:scale-105"
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
             unoptimized
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
