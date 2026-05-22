@@ -225,3 +225,30 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ─── Hero Mobile Readability ─── */
+/*
+  drop-shadow() works even when -webkit-text-fill-color is transparent
+  (unlike text-shadow which gets clipped by background-clip:text).
+  We use it to punch a dark halo behind chrome-text titles on mobile
+  where the stadium background bleeds through.
+*/
+@media (max-width: 639px) {
+  .hero-title {
+    filter:
+      drop-shadow(0 2px 24px rgba(0, 0, 0, 1))
+      drop-shadow(0 0  40px rgba(0, 0, 0, 0.9))
+      drop-shadow(0 0  12px rgba(255, 255, 255, 0.08));
+  }
+  .hero-sub {
+    filter:
+      drop-shadow(0 1px 14px rgba(0, 0, 0, 0.98))
+      drop-shadow(0 0  20px rgba(0, 0, 0, 0.85));
+  }
+  /* Plain body copy: force white instead of chrome-400 gray */
+  .hero-body {
+    color: rgba(255, 255, 255, 0.82) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.82) !important;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  }
+}

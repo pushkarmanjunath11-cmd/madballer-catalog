@@ -34,7 +34,9 @@ export default function Navbar() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.7, ease: 'easeOut' }}
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          scrolled ? 'glass-card-strong border-b border-white/10' : 'bg-transparent'
+          scrolled
+            ? 'glass-card-strong border-b border-white/10'
+            : 'bg-black/55 backdrop-blur-md border-b border-white/[0.07] sm:bg-transparent sm:backdrop-blur-none sm:border-transparent'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">

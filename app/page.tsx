@@ -61,7 +61,10 @@ export default function HomePage() {
             priority
             className="object-cover"
           />
+          {/* Base gradient — desktop level */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/55 to-[#0a0a0a]" />
+          {/* Extra mobile-only veil so text pops against the image */}
+          <div className="absolute inset-0 bg-black/40 sm:hidden pointer-events-none" />
         </motion.div>
 
         <div className="relative z-10 flex flex-col items-center text-center px-5 w-full max-w-2xl mx-auto">
@@ -78,8 +81,8 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="chrome-text leading-none w-full"
-            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(48px, 14vw, 140px)', letterSpacing: '0.06em' }}
+            className="chrome-text hero-title leading-none w-full"
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(52px, 14vw, 140px)', letterSpacing: '0.06em' }}
           >
             MAD BALLERS
           </motion.h1>
@@ -95,8 +98,8 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.5 }}
-            className="chrome-text leading-none"
-            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(18px, 5vw, 44px)', letterSpacing: '0.28em' }}
+            className="chrome-text hero-sub leading-none"
+            style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(20px, 5vw, 44px)', letterSpacing: '0.28em' }}
           >
             BALLER ZONE
           </motion.p>
@@ -105,7 +108,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.65 }}
-            className="text-chrome-400 text-sm sm:text-base mt-2 sm:mt-3 mb-7 sm:mb-9 px-2"
+            className="hero-body text-chrome-400 text-sm sm:text-base mt-3 sm:mt-3 mb-7 sm:mb-9 px-2"
             style={{ fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.14em' }}
           >
             Premium Football Boots — Authentic · Quality · Culture
@@ -119,7 +122,7 @@ export default function HomePage() {
           >
             <a
               href="#boots"
-              className="inline-flex items-center justify-center border border-chrome-400/50 hover:border-chrome-200 text-chrome-200 hover:text-white px-7 py-3.5 tracking-widest text-sm uppercase transition-all duration-200 hover:bg-white/5 min-h-[48px] rounded sm:rounded-none"
+              className="inline-flex items-center justify-center border border-white/70 sm:border-chrome-400/50 hover:border-white text-white sm:text-chrome-200 hover:text-white bg-black/30 sm:bg-transparent hover:bg-white/10 px-7 py-3.5 tracking-widest text-sm uppercase transition-all duration-200 min-h-[48px] rounded sm:rounded-none font-semibold sm:font-normal"
               style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
             >
               BROWSE BOOTS
