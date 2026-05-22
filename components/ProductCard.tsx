@@ -68,7 +68,7 @@ export default function ProductCard({ product, index = 0 }: Props) {
         {/* Order button */}
         <div className="p-3 sm:p-4">
           <a
-            href={getWhatsAppLink()}
+            href={getWhatsAppLink(undefined, product.imageUrl)}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

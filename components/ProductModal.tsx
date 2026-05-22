@@ -158,7 +158,7 @@ export default function ProductModal({ product, onClose }: Props) {
         {/* Order button */}
         <div className="p-4 pt-3">
           <a
-            href={getWhatsAppLink()}
+            href={getWhatsAppLink(undefined, product.imageUrl)}
             target="_blank"
             rel="noopener noreferrer"
             className="wa-btn flex items-center justify-center gap-2 text-white text-sm font-semibold tracking-widest uppercase rounded-xl px-6 py-3.5 min-h-[52px] w-full"
