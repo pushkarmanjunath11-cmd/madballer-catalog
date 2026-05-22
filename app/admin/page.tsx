@@ -47,7 +47,6 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>('upload')
 
   // ── Upload product form ───────────────────────────
-  const [name, setName]         = useState('')
   const [imageMode, setImageMode] = useState<'url' | 'file'>('url')
   const [imageUrl, setImageUrl] = useState('')
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -91,7 +90,7 @@ export default function AdminPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || (!imageUrl && !imageFile)) return
+    if (!imageUrl && !imageFile) return
     setUploading(true); setUploadError('')
     try {
       let finalUrl = imageUrl
@@ -105,12 +104,12 @@ export default function AdminPage() {
         }
       }
       await addProduct({
-        name: name.trim(),
+        name: '',
         category: 'Boots',
         imageUrl: finalUrl,
         ...(extraImages.length > 0 && { images: extraImages }),
       })
-      setName(''); setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0)
+      setImageUrl(''); setImageFile(null); setPreviewSrc(''); setUploadPct(0)
       setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([])
       setUploadSuccess(true)
       setTimeout(() => setUploadSuccess(false), 3000)
@@ -296,11 +295,6 @@ export default function AdminPage() {
               </h2>
               <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 <div>
-                  <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>PRODUCT NAME</label>
-                  <input className="admin-input" placeholder="e.g. Phantom Elite FG" value={name} onChange={(e) => setName(e.target.value)} required />
-                </div>
-
-                <div>
                   <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>IMAGE</label>
                   <div className="flex gap-2 mb-3">
                     {(['url', 'file'] as const).map((mode) => (
@@ -402,7 +396,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <button type="submit" disabled={uploading || !name || (!imageUrl && !imageFile)}
+                <button type="submit" disabled={uploading || (!imageUrl && !imageFile)}
                   className="w-full bg-white text-black font-semibold tracking-widest text-sm uppercase py-3 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                 >
@@ -436,8 +430,7 @@ export default function AdminPage() {
                 </div>
                 <div className="p-4 space-y-2">
                   <span className="badge-boots">Boots</span>
-                  <p className="text-white text-xl" style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.05em' }}>{name || 'Product Name'}</p>
-                  <div className="wa-btn rounded-lg py-2 text-center text-white text-xs tracking-widest font-semibold" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>ORDER ON WHATSAPP</div>
+                  <div className="wa-btn rounded-lg py-2 text-center text-white text-xs tracking-widest font-semibold" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>ORDER NOW</div>
                 </div>
               </div>
             </div>
