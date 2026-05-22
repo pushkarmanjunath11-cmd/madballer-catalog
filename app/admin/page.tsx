@@ -4,13 +4,10 @@ import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
+import { storage } from '@/lib/firebase'
 import { useProductStore, Product } from '@/lib/store'
 import CropModal from '@/components/CropModal'
-
-// ── Cloudinary config ─────────────────────────────────
-// After setup paste your values here (see admin → setup guide below)
-const CLOUDINARY_CLOUD_NAME   = 'YOUR_CLOUD_NAME'
-const CLOUDINARY_UPLOAD_PRESET = 'YOUR_UNSIGNED_PRESET'
 
 const ADMIN_PASSWORD = 'madballers2024'
 
@@ -41,31 +38,18 @@ function compressImage(file: File, maxPx = 1200): Promise<File> {
   })
 }
 
-// ── Upload via Cloudinary (free tier — no credit card) ──
+// ── Upload to Firebase Storage ───────────────────────
 async function uploadToCloudinary(file: File, onProgress: (n: number) => void): Promise<string> {
-  if (CLOUDINARY_CLOUD_NAME === 'YOUR_CLOUD_NAME') {
-    throw new Error('CLOUDINARY_NOT_CONFIGURED')
-  }
   const compressed = await compressImage(file)
   return new Promise((resolve, reject) => {
-    const fd = new FormData()
-    fd.append('file', compressed)
-    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
-    const xhr = new XMLHttpRequest()
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100))
-    }
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        resolve((JSON.parse(xhr.responseText) as { secure_url: string }).secure_url)
-      } else {
-        const body = xhr.responseText
-        reject(new Error(body.includes('preset') ? 'Invalid upload preset — check Cloudinary settings' : `Upload failed (${xhr.status})`))
-      }
-    }
-    xhr.onerror = () => reject(new Error('Network error — check your internet connection'))
-    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`)
-    xhr.send(fd)
+    const storageRef = ref(storage, `products/${Date.now()}_${compressed.name}`)
+    const task = uploadBytesResumable(storageRef, compressed)
+    task.on(
+      'state_changed',
+      (s) => onProgress(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
+      reject,
+      async () => resolve(await getDownloadURL(task.snapshot.ref))
+    )
   })
 }
 
@@ -102,7 +86,6 @@ export default function AdminPage() {
   const [uploadPct, setUploadPct] = useState(0)
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [uploadError, setUploadError] = useState('')
-  const [showRulesHelp, setShowRulesHelp] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // ── Crop modal ────────────────────────────────────
@@ -190,12 +173,7 @@ export default function AdminPage() {
       setTimeout(() => setUploadSuccess(false), 3000)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg === 'CLOUDINARY_NOT_CONFIGURED') {
-        setUploadError('Cloudinary not set up yet — see setup guide below')
-        setShowRulesHelp(true)
-      } else {
-        setUploadError(`Upload failed: ${msg}`)
-      }
+      setUploadError(`Upload failed: ${msg}`)
     }
     finally { setUploading(false) }
   }
@@ -386,23 +364,13 @@ export default function AdminPage() {
               <h2 className="chrome-text text-2xl tracking-widest mb-5 sm:mb-6" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
                 ADD BOOTS
               </h2>
-              {CLOUDINARY_CLOUD_NAME === 'YOUR_CLOUD_NAME' && (
-                <div className="mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/8 p-3">
-                  <p className="text-yellow-400 text-[11px] font-semibold tracking-widest mb-1" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                    ⚠ IMAGE UPLOAD NOT CONFIGURED
-                  </p>
-                  <p className="text-yellow-300/70 text-[10px] leading-relaxed" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                    Sign up free at <strong className="text-yellow-300">cloudinary.com</strong>, create an unsigned upload preset, then send me your Cloud Name + Preset Name to activate file uploads.
-                  </p>
-                </div>
-              )}
               <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 <div>
                   <label className="text-chrome-500 text-xs tracking-widest block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>IMAGE</label>
                   <div className="flex gap-2 mb-3">
                     {(['file', 'url'] as const).map((mode) => (
                       <button key={mode} type="button"
-                        onClick={() => { setImageMode(mode); setPreviewSrc(''); setImageUrl(''); setImageFile(null); setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([]); setShowRulesHelp(false); setUploadError('') }}
+                        onClick={() => { setImageMode(mode); setPreviewSrc(''); setImageUrl(''); setImageFile(null); setAdditionalUrls([]); setAdditionalFiles([]); setAdditionalFilePreviews([]); setUploadError('') }}
                         className={`px-3 py-1.5 text-xs tracking-widest rounded-full border transition-all ${imageMode === mode ? 'bg-white text-black border-white' : 'border-white/15 text-chrome-400 hover:border-white/30'}`}
                         style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                       >{mode === 'url' ? 'URL' : 'FILE → FIREBASE ★'}</button>
@@ -520,30 +488,6 @@ export default function AdminPage() {
                     <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                       className="text-red-400 text-xs tracking-widest text-center" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
                     >✕ {uploadError}</motion.p>
-                  )}
-                  {showRulesHelp && (
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                      className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 text-left space-y-2"
-                    >
-                      <p className="text-yellow-400 text-xs font-semibold tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        CLOUDINARY SETUP (FREE — NO CREDIT CARD)
-                      </p>
-                      <ol className="text-yellow-300/80 text-[11px] leading-relaxed space-y-1.5 list-decimal list-inside" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        <li>Go to <strong className="text-yellow-300">cloudinary.com</strong> → Sign Up Free</li>
-                        <li>After login, your <strong className="text-yellow-300">Cloud Name</strong> is shown in the dashboard top-left</li>
-                        <li>Go to <strong className="text-yellow-300">Settings → Upload</strong> (gear icon)</li>
-                        <li>Scroll to <strong className="text-yellow-300">Upload presets</strong> → click <strong className="text-yellow-300">Add upload preset</strong></li>
-                        <li>Set <strong className="text-yellow-300">Signing mode</strong> to <strong className="text-yellow-300">Unsigned</strong> → Save</li>
-                        <li>Note the <strong className="text-yellow-300">Preset name</strong> (e.g. ml_default)</li>
-                        <li>Tell me your cloud name + preset name and I&apos;ll add them to the code</li>
-                      </ol>
-                      <p className="text-yellow-500/60 text-[9px] tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        Free tier: 25 GB storage · 25 GB bandwidth/month · no expiry
-                      </p>
-                      <button onClick={() => setShowRulesHelp(false)} className="text-yellow-500/50 text-[10px] hover:text-yellow-400 transition-colors" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                        DISMISS ✕
-                      </button>
-                    </motion.div>
                   )}
                 </AnimatePresence>
               </form>
