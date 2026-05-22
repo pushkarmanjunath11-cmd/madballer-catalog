@@ -78,19 +78,6 @@ export default function ImageSlot({
     onBusyChange?.(true)
     console.log('[ImageSlot] upload started')
 
-    // Safety valve ─ if uploadImage hangs entirely (promise never settles),
-    // this timer fires after 45 s and force-resets the UI so the user can retry.
-    // The normal try/catch/finally handles all ordinary success and failure paths.
-    let settled = false
-    const safetyTimer = setTimeout(() => {
-      if (!settled) {
-        console.error('[ImageSlot] safety timeout fired — forcing error state')
-        setError('Upload timed out — tap to retry')
-        setStatus('error')
-        onBusyChange?.(false)
-      }
-    }, 45_000)
-
     try {
       const url = await uploadImage(file, folder)
       console.log('[ImageSlot] upload succeeded:', url)
@@ -102,10 +89,8 @@ export default function ImageSlot({
       setError(msg)
       setStatus('error')
     } finally {
-      settled = true
-      clearTimeout(safetyTimer)
       onBusyChange?.(false)
-      console.log('[ImageSlot] busy reset — upload flow complete')
+      console.log('[ImageSlot] busy reset')
     }
   }, [folder, onUrl, onBusyChange, applyPreview])
 
