@@ -4,9 +4,9 @@ import { useState, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
-import { uploadImage } from '@/lib/uploadImage'
+import { startUpload } from '@/lib/firebaseUpload'
 import { useProductStore, Product } from '@/lib/store'
-import ImageUploadZone from '@/components/ImageUploadZone'
+import UploadZone from '@/components/UploadZone'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,12 @@ interface ExtraImage {
   id: number
   url: string   // empty until upload completes
   busy: boolean
+}
+
+interface Toast {
+  id: number
+  type: 'ok' | 'err'
+  msg: string
 }
 
 // ── Shared sub-components ──────────────────────────────────────────────────────
@@ -38,6 +44,47 @@ function LogoImg({ size = 'sm' }: { size?: 'sm' | 'lg' }) {
   )
 }
 
+// ── Toast container ────────────────────────────────────────────────────────────
+
+function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-[500] flex flex-col gap-2 pointer-events-none">
+      <AnimatePresence>
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.95 }}
+            transition={{ duration: 0.22 }}
+            className={`
+              pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3
+              border shadow-xl backdrop-blur-sm
+              ${t.type === 'ok'
+                ? 'bg-green-500/10 border-green-500/30 text-green-300'
+                : 'bg-red-500/10 border-red-500/30 text-red-300'}
+            `}
+          >
+            <span className="text-base">{t.type === 'ok' ? '✓' : '✕'}</span>
+            <span
+              className="text-xs tracking-widest leading-snug max-w-[220px]"
+              style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+            >
+              {t.msg}
+            </span>
+            <button
+              onClick={() => onDismiss(t.id)}
+              className="opacity-40 hover:opacity-80 transition-opacity text-xs ml-1"
+            >
+              ✕
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 // ── Admin page ─────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -51,29 +98,38 @@ export default function AdminPage() {
   // ── Navigation ─────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>('upload')
 
+  // ── Toast notifications ─────────────────────────────────────────
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const toastIdRef = useRef(0)
+
+  const addToast = useCallback((type: 'ok' | 'err', msg: string) => {
+    const id = ++toastIdRef.current
+    setToasts((prev) => [...prev, { id, type, msg }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000)
+  }, [])
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+  }, [])
+
   // ── Upload form ────────────────────────────────────────────────
-  // formKey is incremented after a successful submit to unmount/remount all
-  // ImageUploadZone instances, giving each a completely fresh state.
-  const [formKey,      setFormKey]      = useState(0)
-  const [mainUrl,      setMainUrl]      = useState('')   // Firebase URL
-  const [mainPreview,  setMainPreview]  = useState('')   // local data-URL for live preview
-  const [mainBusy,     setMainBusy]     = useState(false)
-  const [extras,       setExtras]       = useState<ExtraImage[]>([])
+  // Incrementing formKey fully unmounts/remounts all UploadZone instances → clean reset
+  const [formKey,     setFormKey]     = useState(0)
+  const [mainUrl,     setMainUrl]     = useState('')     // Firebase URL (set when upload done)
+  const [mainPreview, setMainPreview] = useState('')     // blob URL for live preview panel
+  const [mainBusy,    setMainBusy]    = useState(false)
+  const [extras,      setExtras]      = useState<ExtraImage[]>([])
   const nextId = useRef(0)
-  const [saving,       setSaving]       = useState(false)
-  const [saveSuccess,  setSaveSuccess]  = useState(false)
-  const [saveError,    setSaveError]    = useState('')
+  const [saving,      setSaving]      = useState(false)
 
   // ── Manage tab ─────────────────────────────────────────────────
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [deleteError, setDeleteError]         = useState('')
 
   // ── Categories tab ─────────────────────────────────────────────
-  const [catUrl,     setCatUrl]     = useState('')
-  const [catFile,    setCatFile]    = useState<File | null>(null)
-  const [catPreview, setCatPreview] = useState('')
-  const [catSaving,  setCatSaving]  = useState(false)
-  const [catSuccess, setCatSuccess] = useState(false)
+  const [catUrl,      setCatUrl]      = useState('')
+  const [catFile,     setCatFile]     = useState<File | null>(null)
+  const [catPreview,  setCatPreview]  = useState('')
+  const [catSaving,   setCatSaving]   = useState(false)
   const catFileRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -81,7 +137,7 @@ export default function AdminPage() {
     categoryImages, addProduct, removeProduct, updateCategoryImage,
   } = useProductStore()
 
-  // ── Auth handler ───────────────────────────────────────────────
+  // ── Auth ───────────────────────────────────────────────────────
 
   const handleLogin = useCallback(() => {
     if (password === ADMIN_PASSWORD) {
@@ -94,9 +150,8 @@ export default function AdminPage() {
     }
   }, [password])
 
-  // ── Upload form handlers ───────────────────────────────────────
+  // ── Extra image helpers ────────────────────────────────────────
 
-  // Stable callbacks for extras — setExtras functional updater never changes
   const updateExtraUrl = useCallback((id: number, url: string) => {
     setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, url } : e)))
   }, [])
@@ -104,6 +159,10 @@ export default function AdminPage() {
   const updateExtraBusy = useCallback((id: number, busy: boolean) => {
     setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, busy } : e)))
   }, [])
+
+  const handleExtraError = useCallback((msg: string) => {
+    addToast('err', msg)
+  }, [addToast])
 
   const removeExtra = useCallback((id: number) => {
     setExtras((prev) => prev.filter((e) => e.id !== id))
@@ -116,7 +175,8 @@ export default function AdminPage() {
     ])
   }, [])
 
-  // Derive gate conditions with useMemo
+  // ── Submit gate ────────────────────────────────────────────────
+
   const anyBusy = useMemo(
     () => mainBusy || extras.some((e) => e.busy),
     [mainBusy, extras],
@@ -128,16 +188,17 @@ export default function AdminPage() {
   )
 
   const submitLabel = useMemo(() => {
-    if (saving)    return 'SAVING TO FIRESTORE...'
-    if (anyBusy)   return 'UPLOADING...'
-    if (!mainUrl)  return 'SELECT AN IMAGE FIRST'
+    if (saving)   return 'SAVING TO FIRESTORE...'
+    if (anyBusy)  return 'UPLOADING...'
+    if (!mainUrl) return 'SELECT AN IMAGE FIRST'
     return 'ADD PRODUCT ✓'
   }, [saving, anyBusy, mainUrl])
+
+  // ── Submit ─────────────────────────────────────────────────────
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return
     setSaving(true)
-    setSaveError('')
     try {
       const extraUrls = extras.map((e) => e.url).filter(Boolean)
       await addProduct({
@@ -146,35 +207,34 @@ export default function AdminPage() {
         imageUrl: mainUrl,
         ...(extraUrls.length > 0 && { images: extraUrls }),
       })
-      // Reset entire form by remounting ImageUploadZones
+      // Reset form — incrementing formKey unmounts all UploadZone instances
       setMainUrl('')
       setMainPreview('')
       setMainBusy(false)
       setExtras([])
       setFormKey((k) => k + 1)
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3500)
+      addToast('ok', 'PRODUCT SAVED TO FIRESTORE ✓')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setSaveError(`Failed to save: ${msg}`)
+      addToast('err', `Save failed: ${msg}`)
     } finally {
       setSaving(false)
     }
-  }, [canSubmit, mainUrl, extras, addProduct])
+  }, [canSubmit, mainUrl, extras, addProduct, addToast])
 
-  // ── Delete handler ─────────────────────────────────────────────
+  // ── Delete ─────────────────────────────────────────────────────
 
   const handleDelete = useCallback(async (id: string) => {
-    setDeleteError('')
     try {
       await removeProduct(id)
       setConfirmDeleteId(null)
+      addToast('ok', 'PRODUCT DELETED')
     } catch (err) {
       console.error('Delete error:', err)
-      setDeleteError('Firestore blocked the delete — check your security rules.')
       setConfirmDeleteId(null)
+      addToast('err', 'Delete failed — check Firestore rules (allow write: if true)')
     }
-  }, [removeProduct])
+  }, [removeProduct, addToast])
 
   // ── Category image save ────────────────────────────────────────
 
@@ -183,20 +243,21 @@ export default function AdminPage() {
     try {
       let url = catUrl.trim() || categoryImages['Boots']
       if (catFile) {
-        url = await uploadImage(catFile, 'categories')
+        const { promise } = startUpload(catFile, 'categories', () => {})
+        url = await promise
         setCatPreview(url)
         setCatFile(null)
         if (catFileRef.current) catFileRef.current.value = ''
       }
       await updateCategoryImage('Boots', url)
-      setCatSuccess(true)
-      setTimeout(() => setCatSuccess(false), 3000)
+      addToast('ok', 'BOOTS IMAGE UPDATED ✓')
     } catch (err) {
       console.error('Category save failed:', err)
+      addToast('err', 'Failed to save category image')
     } finally {
       setCatSaving(false)
     }
-  }, [catUrl, catFile, categoryImages, updateCategoryImage])
+  }, [catUrl, catFile, categoryImages, updateCategoryImage, addToast])
 
   const handleCatFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -204,6 +265,11 @@ export default function AdminPage() {
     setCatFile(file)
     setCatPreview(URL.createObjectURL(file))
   }, [])
+
+  // ── Main upload error handler ──────────────────────────────────
+  const handleMainError = useCallback((msg: string) => {
+    addToast('err', msg)
+  }, [addToast])
 
   // ════════════════════════════════════════════════════════════════
   // LOGIN SCREEN
@@ -288,6 +354,9 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-[#0a0a0a]">
+
+      {/* Global toast notifications */}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       {/* ── Top nav ── */}
       <nav className="glass-card-strong border-b border-white/[0.07] sticky top-0 z-40">
@@ -402,7 +471,7 @@ export default function AdminPage() {
                 >
                   MAIN IMAGE
                 </label>
-                <ImageUploadZone
+                <UploadZone
                   key={`main-${formKey}`}
                   folder="products"
                   label="+ SELECT IMAGE"
@@ -410,6 +479,7 @@ export default function AdminPage() {
                   onUploaded={setMainUrl}
                   onPreview={setMainPreview}
                   onBusyChange={setMainBusy}
+                  onError={handleMainError}
                 />
               </div>
 
@@ -435,12 +505,13 @@ export default function AdminPage() {
                         className="flex gap-2"
                       >
                         <div className="flex-1">
-                          <ImageUploadZone
+                          <UploadZone
                             compact
                             folder="products"
                             label={`+ PHOTO ${idx + 2}`}
                             onUploaded={(url) => updateExtraUrl(extra.id, url)}
                             onBusyChange={(busy) => updateExtraBusy(extra.id, busy)}
+                            onError={handleExtraError}
                           />
                         </div>
                         <button
@@ -478,34 +549,6 @@ export default function AdminPage() {
               >
                 {submitLabel}
               </button>
-
-              {/* Feedback */}
-              <AnimatePresence>
-                {saveSuccess && (
-                  <motion.p
-                    key="ok"
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="text-green-400 text-sm tracking-widest text-center"
-                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                  >
-                    ✓ SAVED TO FIRESTORE
-                  </motion.p>
-                )}
-                {saveError && (
-                  <motion.p
-                    key="err"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-red-400 text-xs tracking-widest text-center"
-                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                  >
-                    ✕ {saveError}
-                  </motion.p>
-                )}
-              </AnimatePresence>
             </div>
 
             {/* ── Right: Live preview ── */}
@@ -528,12 +571,11 @@ export default function AdminPage() {
                         transition={{ duration: 0.25 }}
                         className="absolute inset-0"
                       >
-                        <Image
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
                           src={mainPreview}
                           alt="Preview"
-                          fill
-                          className="object-contain"
-                          unoptimized
+                          className="absolute inset-0 w-full h-full object-contain"
                         />
                       </motion.div>
                     ) : (
@@ -570,41 +612,6 @@ export default function AdminPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
           >
-            <AnimatePresence>
-              {deleteError && (
-                <motion.div
-                  initial={{ opacity: 0, y: -12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  className="mb-5 rounded-xl border border-red-500/40 bg-red-500/10 p-4"
-                >
-                  <p
-                    className="text-red-400 text-sm font-semibold tracking-widest mb-1"
-                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                  >
-                    ✕ DELETE FAILED
-                  </p>
-                  <p
-                    className="text-red-300/80 text-xs leading-relaxed"
-                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                  >
-                    Firestore rules are blocking writes. Go to{' '}
-                    <strong>Firebase Console → Firestore → Rules</strong> and set{' '}
-                    <code className="bg-red-900/40 px-1 rounded text-red-200">
-                      allow write: if true;
-                    </code>{' '}
-                    for the products collection.
-                  </p>
-                  <button
-                    onClick={() => setDeleteError('')}
-                    className="mt-2 text-red-400/60 text-xs hover:text-red-400 transition-colors"
-                  >
-                    DISMISS ✕
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {loading ? (
               <div className="flex items-center justify-center py-24">
                 <p
@@ -638,10 +645,7 @@ export default function AdminPage() {
                     key={product.id}
                     product={product}
                     confirmDeleteId={confirmDeleteId}
-                    onAskDelete={() => {
-                      setConfirmDeleteId(product.id)
-                      setDeleteError('')
-                    }}
+                    onAskDelete={() => setConfirmDeleteId(product.id)}
                     onConfirmDelete={() => handleDelete(product.id)}
                     onCancelDelete={() => setConfirmDeleteId(null)}
                   />
@@ -721,20 +725,6 @@ export default function AdminPage() {
                   >
                     {catSaving ? 'SAVING...' : 'SAVE BOOTS IMAGE'}
                   </button>
-
-                  <AnimatePresence>
-                    {catSuccess && (
-                      <motion.p
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="text-green-400 text-xs tracking-widest text-center"
-                        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                      >
-                        ✓ UPDATED LIVE
-                      </motion.p>
-                    )}
-                  </AnimatePresence>
                 </div>
               </div>
             </div>
