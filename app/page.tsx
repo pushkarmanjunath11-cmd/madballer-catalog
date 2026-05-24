@@ -64,7 +64,7 @@ export default function HomePage() {
           {/* Base gradient — desktop level */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/55 to-[#0a0a0a]" />
           {/* Extra mobile-only veil so text pops against the image */}
-          <div className="absolute inset-0 bg-black/40 sm:hidden pointer-events-none" />
+          <div className="absolute inset-0 bg-zinc-700/25 sm:hidden pointer-events-none" />
         </motion.div>
 
         <div className="relative z-10 flex flex-col items-center text-center px-5 w-full max-w-2xl mx-auto">
