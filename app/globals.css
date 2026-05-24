@@ -235,23 +235,34 @@ body {
   (text-shadow is clipped by background-clip:text, drop-shadow is not).
 */
 @media (max-width: 639px) {
-  /* Bright silver gradient — no dark stops */
+
+  /* ── 1. chrome-text gradient — no dark stops so titles never vanish ── */
   .chrome-text {
     background: linear-gradient(
       180deg,
       #ffffff  0%,
       #f0f0f0 20%,
       #ffffff 38%,
-      #e4e4e4 55%,
+      #e8e8e8 55%,
       #f8f8f8 72%,
-      #e8e8e8 100%
+      #eeeeee 100%
     );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* Subtle dark halo so letters pop against any background colour */
+  /* ── 2. Uplift every chrome utility colour used across the site ──────
+     chrome-300 → bright silver  chrome-600 → readable mid-silver        */
+  .text-chrome-100 { color: #ffffff !important; }
+  .text-chrome-200 { color: #f5f5f5 !important; }
+  .text-chrome-300 { color: #ececec !important; }
+  .text-chrome-400 { color: #d8d8d8 !important; }
+  .text-chrome-500 { color: #c4c4c4 !important; }
+  .text-chrome-600 { color: #ababab !important; }
+  .text-chrome-700 { color: #909090 !important; }
+
+  /* ── 3. Hero-specific drop-shadow so titles punch through any BG ───── */
   .hero-title {
     filter:
       drop-shadow(0 2px 16px rgba(0, 0, 0, 0.95))
@@ -263,10 +274,10 @@ body {
       drop-shadow(0 0  18px rgba(0, 0, 0, 0.75));
   }
 
-  /* Plain body copy: force white instead of chrome-400 gray (#a8a8a8) */
+  /* ── 4. Plain body copy in hero (was chrome-400 gray #a8a8a8) ───────── */
   .hero-body {
-    color: rgba(255, 255, 255, 0.88) !important;
-    -webkit-text-fill-color: rgba(255, 255, 255, 0.88) !important;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+    color: rgba(255, 255, 255, 0.9) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.9) !important;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
   }
 }
