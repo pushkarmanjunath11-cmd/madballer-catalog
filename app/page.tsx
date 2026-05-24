@@ -122,7 +122,7 @@ export default function HomePage() {
           >
             <a
               href="#boots"
-              className="inline-flex items-center justify-center border border-white/70 sm:border-chrome-400/50 hover:border-white text-white sm:text-chrome-200 hover:text-white bg-black/30 sm:bg-transparent hover:bg-white/10 px-7 py-3.5 tracking-widest text-sm uppercase transition-all duration-200 min-h-[48px] rounded sm:rounded-none font-semibold sm:font-normal"
+              className="inline-flex items-center justify-center border-2 border-white/90 sm:border sm:border-chrome-400/50 hover:border-white text-white sm:text-chrome-200 hover:text-white bg-white/10 sm:bg-transparent hover:bg-white/15 px-7 py-3.5 tracking-widest text-sm uppercase transition-all duration-200 min-h-[48px] rounded sm:rounded-none font-semibold sm:font-normal"
               style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
             >
               BROWSE BOOTS

@@ -228,27 +228,45 @@ body {
 
 /* ─── Hero Mobile Readability ─── */
 /*
-  drop-shadow() works even when -webkit-text-fill-color is transparent
-  (unlike text-shadow which gets clipped by background-clip:text).
-  We use it to punch a dark halo behind chrome-text titles on mobile
-  where the stadium background bleeds through.
+  On mobile the combined overlays make the background very dark.
+  The chrome-text gradient has mid-gray stops (#888, #a0a0a0) that
+  disappear entirely against near-black — override to near-white only.
+  drop-shadow() adds a fine halo even on transparent-fill text
+  (text-shadow is clipped by background-clip:text, drop-shadow is not).
 */
 @media (max-width: 639px) {
+  /* Bright silver gradient — no dark stops */
+  .chrome-text {
+    background: linear-gradient(
+      180deg,
+      #ffffff  0%,
+      #f0f0f0 20%,
+      #ffffff 38%,
+      #e4e4e4 55%,
+      #f8f8f8 72%,
+      #e8e8e8 100%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Subtle dark halo so letters pop against any background colour */
   .hero-title {
     filter:
-      drop-shadow(0 2px 24px rgba(0, 0, 0, 1))
-      drop-shadow(0 0  40px rgba(0, 0, 0, 0.9))
-      drop-shadow(0 0  12px rgba(255, 255, 255, 0.08));
+      drop-shadow(0 2px 16px rgba(0, 0, 0, 0.95))
+      drop-shadow(0 0  32px rgba(0, 0, 0, 0.8));
   }
   .hero-sub {
     filter:
-      drop-shadow(0 1px 14px rgba(0, 0, 0, 0.98))
-      drop-shadow(0 0  20px rgba(0, 0, 0, 0.85));
+      drop-shadow(0 1px 10px rgba(0, 0, 0, 0.95))
+      drop-shadow(0 0  18px rgba(0, 0, 0, 0.75));
   }
-  /* Plain body copy: force white instead of chrome-400 gray */
+
+  /* Plain body copy: force white instead of chrome-400 gray (#a8a8a8) */
   .hero-body {
-    color: rgba(255, 255, 255, 0.82) !important;
-    -webkit-text-fill-color: rgba(255, 255, 255, 0.82) !important;
-    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+    color: rgba(255, 255, 255, 0.88) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.88) !important;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
   }
 }
