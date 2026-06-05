@@ -12,8 +12,8 @@ interface Props {
 }
 
 const BADGE: Record<string, string> = {
-  Boots:   'badge-boots',
-  Jackets: 'badge-jackets',
+  Boots:               'badge-boots',
+  'Jackets/Tracksuit': 'badge-jackets',
 }
 
 export default function ProductModal({ product, onClose }: Props) {

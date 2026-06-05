@@ -10,11 +10,11 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 
-export type Category = 'Boots' | 'Jackets'
+export type Category = 'Boots' | 'Jackets/Tracksuit'
 
 export interface CategoryImages {
   Boots: string
-  Jackets: string
+  'Jackets/Tracksuit': string
 }
 
 export interface Product {
@@ -29,8 +29,8 @@ export interface Product {
 }
 
 export const DEFAULT_CATEGORY_IMAGES: CategoryImages = {
-  Boots:   'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80',
-  Jackets: 'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=900&q=80',
+  Boots:              'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80',
+  'Jackets/Tracksuit':'https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=900&q=80',
 }
 
 interface ProductStore {

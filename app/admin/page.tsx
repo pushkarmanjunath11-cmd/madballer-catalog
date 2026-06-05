@@ -514,7 +514,7 @@ export default function AdminPage() {
                   CATEGORY
                 </label>
                 <div className="flex gap-2">
-                  {(['Boots', 'Jackets'] as Category[]).map(cat => (
+                  {(['Boots', 'Jackets/Tracksuit'] as Category[]).map(cat => (
                     <button
                       key={cat}
                       type="button"
@@ -718,7 +718,7 @@ export default function AdminPage() {
                   </AnimatePresence>
                 </div>
                 <div className="p-4 space-y-2">
-                  <span className={category === 'Jackets' ? 'badge-jackets' : 'badge-boots'}>
+                  <span className={category === 'Jackets/Tracksuit' ? 'badge-jackets' : 'badge-boots'}>
                     {category}
                   </span>
                   <div
@@ -799,7 +799,7 @@ export default function AdminPage() {
 
             {/* Category selector cards */}
             <div className="flex gap-3 mb-6">
-              {(['Boots', 'Jackets'] as Category[]).map(cat => (
+              {(['Boots', 'Jackets/Tracksuit'] as Category[]).map(cat => (
                 <button
                   key={cat}
                   onClick={() => {
@@ -927,7 +927,7 @@ function ManageCard({ product, confirmDeleteId, onAskDelete, onConfirmDelete, on
         </AnimatePresence>
       </div>
       <div className="p-2.5 sm:p-3 flex items-center justify-between gap-1.5">
-        <span className={`${product.category === 'Jackets' ? 'badge-jackets' : 'badge-boots'} text-[9px] sm:text-[10px]`}>
+        <span className={`${product.category === 'Jackets/Tracksuit' ? 'badge-jackets' : 'badge-boots'} text-[9px] sm:text-[10px]`}>
           {product.category}
         </span>
         <button
