@@ -52,9 +52,10 @@ export default function ImageSlot({
   const [showCrop, setShowCrop] = useState(false)
   const [cropSrc,  setCropSrc]  = useState('')
 
-  const inputRef    = useRef<HTMLInputElement>(null)
-  const blobUrlRef  = useRef('')   // current preview blob URL (cleanup on unmount)
-  const cropSrcRef  = useRef('')   // crop modal blob URL (cleanup on cancel / unmount)
+  const inputRef        = useRef<HTMLInputElement>(null)
+  const blobUrlRef      = useRef('')           // current preview blob URL (cleanup on unmount)
+  const cropSrcRef      = useRef('')           // crop modal blob URL (cleanup on cancel / unmount)
+  const originalFileRef = useRef<File | null>(null)  // kept so "use full image" skips crop
 
   // Revoke all blob URLs on unmount
   useEffect(() => {
@@ -124,6 +125,9 @@ export default function ImageSlot({
       }
     }
 
+    // Keep original file so "use full image" can upload without cropping
+    originalFileRef.current = file
+
     // Revoke any previous crop-modal blob URL before creating a new one
     if (cropSrcRef.current) URL.revokeObjectURL(cropSrcRef.current)
     const blobUrl = URL.createObjectURL(file)
@@ -138,6 +142,15 @@ export default function ImageSlot({
     // Close crop modal (exit animation can still use cropSrcRef's URL)
     setShowCrop(false)
     uploadBlob(blob)
+  }, [uploadBlob])
+
+  // ── Skip crop → upload original file ─────────────────────────────
+
+  const handleCropSkip = useCallback(() => {
+    setShowCrop(false)
+    if (originalFileRef.current) {
+      uploadBlob(originalFileRef.current)
+    }
   }, [uploadBlob])
 
   // ── Crop cancelled → back to idle ─────────────────────────────────
@@ -199,6 +212,7 @@ export default function ImageSlot({
             src={cropSrc}
             onCrop={handleCropDone}
             onCancel={handleCropCancel}
+            onSkip={handleCropSkip}
           />
         )}
       </AnimatePresence>

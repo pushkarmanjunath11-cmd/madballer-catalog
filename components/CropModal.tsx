@@ -15,6 +15,8 @@ interface Props {
   onCrop: (blob: Blob) => void
   /** Called when the user cancels */
   onCancel: () => void
+  /** Called when the user wants to skip cropping and upload the full image */
+  onSkip?: () => void
 }
 
 // ── Constants & helpers ────────────────────────────────────────────────────────
@@ -73,7 +75,7 @@ function handleStyle(lx: number, ty: number, cursor: string): React.CSSPropertie
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function CropModal({ src, onCrop, onCancel }: Props) {
+export default function CropModal({ src, onCrop, onCancel, onSkip }: Props) {
   // Display dimensions of the image (computed after load)
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null)
   // Crop box in display-pixel coordinates
@@ -105,8 +107,8 @@ export default function CropModal({ src, onCrop, onCancel }: Props) {
 
       setImgSize({ w, h })
 
-      // Init as a centred square (76% of the shorter side) so the ratio is locked from the start
-      const size = Math.round(Math.min(w, h) * 0.76)
+      // Init as the largest possible centred square (full shorter side) so users see maximum coverage
+      const size = Math.min(w, h)
       setBox({ x: Math.round((w - size) / 2), y: Math.round((h - size) / 2), w: size, h: size })
     }
     img.src = src
@@ -200,12 +202,23 @@ export default function CropModal({ src, onCrop, onCancel }: Props) {
       style={{ background: 'rgba(0,0,0,0.93)' }}
     >
       {/* Instruction */}
-      <p
-        className="mb-5 text-chrome-400 text-[10px] tracking-[0.22em] select-none"
-        style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-      >
-        DRAG TO CROP — SQUARE
-      </p>
+      <div className="mb-5 flex flex-col items-center gap-1.5">
+        <p
+          className="text-chrome-400 text-[10px] tracking-[0.22em] select-none"
+          style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+        >
+          DRAG TO CROP — SQUARE
+        </p>
+        {onSkip && (
+          <button
+            onClick={onSkip}
+            className="text-chrome-600 hover:text-chrome-300 text-[10px] tracking-widest underline underline-offset-2 transition-colors select-none"
+            style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+          >
+            or use full image without cropping
+          </button>
+        )}
+      </div>
 
       {/* Loading spinner */}
       {!imgSize && (
