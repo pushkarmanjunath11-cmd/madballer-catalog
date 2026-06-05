@@ -117,6 +117,7 @@ export default function AdminPage() {
   // formKey remounts ImageSlot instances on reset, giving each a clean state
   const [formKey,        setFormKey]        = useState(0)
   const [imageMode,      setImageMode]      = useState<ImageMode>('file')
+  const [category,       setCategory]       = useState<Category>('Boots')
   const [urlInput,       setUrlInput]       = useState('')   // raw text value (url mode only)
   const [mainUrl,        setMainUrl]        = useState('')
   const [mainPreview,    setMainPreview]    = useState('')   // blob URL or direct URL for live preview
@@ -135,6 +136,7 @@ export default function AdminPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   // ── Categories tab ─────────────────────────────────────────────
+  const [activeCatEdit, setActiveCatEdit] = useState<Category>('Boots')
   const [catUrl,     setCatUrl]     = useState('')
   const [catFile,    setCatFile]    = useState<File | null>(null)
   const [catPreview, setCatPreview] = useState('')
@@ -252,13 +254,14 @@ export default function AdminPage() {
       const extraUrls = extras.map(e => e.url).filter(Boolean)
       await addProduct({
         name: '',
-        category: 'Boots',
+        category,
         imageUrl: mainUrl,
         ...(extraUrls.length > 0 && { images: extraUrls }),
         ...(pendingHashRef.current && { fingerprint: pendingHashRef.current }),
       })
       // Reset form — clears all image state and remounts ImageSlot instances
       setImageMode('file')
+      setCategory('Boots')
       setUrlInput(''); setMainUrl(''); setMainPreview(''); setMainUploading(false)
       setExtras([]); pendingHashRef.current = null; setFormKey(k => k + 1)
       addToast('ok', 'PRODUCT SAVED ✓')
@@ -294,20 +297,20 @@ export default function AdminPage() {
   const handleSaveCat = useCallback(async () => {
     setCatSaving(true)
     try {
-      let url = catUrl.trim() || categoryImages['Boots']
+      let url = catUrl.trim() || categoryImages[activeCatEdit]
       if (catFile) {
         url = await uploadImage(catFile, 'categories')
         setCatPreview(url); setCatFile(null)
         if (catInputRef.current) catInputRef.current.value = ''
       }
-      await updateCategoryImage('Boots', url)
-      addToast('ok', 'BOOTS IMAGE UPDATED ✓')
+      await updateCategoryImage(activeCatEdit, url)
+      addToast('ok', `${activeCatEdit.toUpperCase()} IMAGE UPDATED ✓`)
     } catch {
       addToast('err', 'Failed to save category image')
     } finally {
       setCatSaving(false)
     }
-  }, [catUrl, catFile, categoryImages, updateCategoryImage, addToast])
+  }, [catUrl, catFile, categoryImages, activeCatEdit, updateCategoryImage, addToast])
 
   // ════════════════════════════════════════════════════════════════
   // LOGIN SCREEN
@@ -499,8 +502,37 @@ export default function AdminPage() {
                 className="chrome-text text-2xl tracking-widest"
                 style={{ fontFamily: 'Bebas Neue, sans-serif' }}
               >
-                ADD BOOTS
+                ADD PRODUCT
               </h2>
+
+              {/* Category picker */}
+              <div className="space-y-1.5">
+                <label
+                  className="text-chrome-500 text-xs tracking-widest block"
+                  style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                >
+                  CATEGORY
+                </label>
+                <div className="flex gap-2">
+                  {(['Boots', 'Jackets'] as Category[]).map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategory(cat)}
+                      className={`flex-1 py-2 text-xs tracking-widest uppercase rounded-lg border transition-all duration-200 ${
+                        category === cat
+                          ? cat === 'Boots'
+                            ? 'bg-[#d4af37]/15 border-[#d4af37]/60 text-[#d4af37] font-semibold'
+                            : 'bg-[#8bc3e6]/15 border-[#8bc3e6]/60 text-[#8bc3e6] font-semibold'
+                          : 'border-white/10 text-chrome-500 hover:text-chrome-300 hover:border-white/20'
+                      }`}
+                      style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Main image */}
               <div className="space-y-2">
@@ -686,7 +718,9 @@ export default function AdminPage() {
                   </AnimatePresence>
                 </div>
                 <div className="p-4 space-y-2">
-                  <span className="badge-boots">Boots</span>
+                  <span className={category === 'Jackets' ? 'badge-jackets' : 'badge-boots'}>
+                    {category}
+                  </span>
                   <div
                     className="wa-btn rounded-lg py-2 text-center text-white text-xs tracking-widest font-semibold"
                     style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
@@ -760,60 +794,74 @@ export default function AdminPage() {
               className="text-chrome-500 text-sm tracking-widest mb-6"
               style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
             >
-              Update the hero image shown on the Boots section of the homepage.
+              Select a category to update its hero image shown on the homepage.
             </p>
-            <div className="max-w-sm">
-              <div className="glass-card rounded-2xl overflow-hidden">
-                <div className="relative aspect-[3/2]">
+
+            {/* Category selector cards */}
+            <div className="flex gap-3 mb-6">
+              {(['Boots', 'Jackets'] as Category[]).map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setActiveCatEdit(cat)
+                    setCatUrl(''); setCatFile(null); setCatPreview('')
+                    if (catInputRef.current) catInputRef.current.value = ''
+                  }}
+                  className={`relative flex-1 max-w-[160px] rounded-xl overflow-hidden aspect-[3/2] border-2 transition-all duration-200 ${
+                    activeCatEdit === cat ? 'border-white/70' : 'border-transparent opacity-50 hover:opacity-75'
+                  }`}
+                >
                   <Image
-                    src={catPreview || categoryImages['Boots']}
-                    alt="Boots"
+                    src={cat === activeCatEdit && catPreview ? catPreview : categoryImages[cat]}
+                    alt={cat}
                     fill
                     className="object-cover"
                     unoptimized
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                  <h3
-                    className="absolute bottom-3 left-4 chrome-text text-2xl"
+                  <span
+                    className="absolute bottom-2 left-3 chrome-text text-lg"
                     style={{ fontFamily: 'Bebas Neue, sans-serif', letterSpacing: '0.1em' }}
                   >
-                    BOOTS
-                  </h3>
-                </div>
-                <div className="p-4 space-y-3">
-                  <input
-                    className="admin-input text-sm"
-                    placeholder="Paste new image URL..."
-                    value={catUrl}
-                    onChange={e => { setCatUrl(e.target.value); if (e.target.value) setCatPreview(e.target.value) }}
-                  />
-                  <div>
-                    <input
-                      ref={catInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleCatFile}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => catInputRef.current?.click()}
-                      className="w-full border border-dashed border-white/15 rounded-lg py-2.5 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
-                      style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                    >
-                      {catFile ? catFile.name : '+ UPLOAD FILE → FIREBASE'}
-                    </button>
-                  </div>
-                  <button
-                    onClick={handleSaveCat}
-                    disabled={catSaving}
-                    className="w-full bg-white text-black font-semibold tracking-widest text-xs sm:text-sm uppercase py-2.5 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
-                  >
-                    {catSaving ? 'SAVING...' : 'SAVE BOOTS IMAGE'}
-                  </button>
-                </div>
+                    {cat.toUpperCase()}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Edit form for active category */}
+            <div className="max-w-sm space-y-3">
+              <input
+                className="admin-input text-sm"
+                placeholder={`Paste new image URL for ${activeCatEdit}...`}
+                value={catUrl}
+                onChange={e => { setCatUrl(e.target.value); if (e.target.value) setCatPreview(e.target.value) }}
+              />
+              <div>
+                <input
+                  ref={catInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleCatFile}
+                />
+                <button
+                  type="button"
+                  onClick={() => catInputRef.current?.click()}
+                  className="w-full border border-dashed border-white/15 rounded-lg py-2.5 text-chrome-500 text-xs tracking-widest hover:border-white/30 hover:text-chrome-300 transition-all"
+                  style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                >
+                  {catFile ? catFile.name : `+ UPLOAD FILE FOR ${activeCatEdit.toUpperCase()}`}
+                </button>
               </div>
+              <button
+                onClick={handleSaveCat}
+                disabled={catSaving}
+                className="w-full bg-white text-black font-semibold tracking-widest text-xs sm:text-sm uppercase py-2.5 rounded-xl hover:bg-chrome-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+              >
+                {catSaving ? 'SAVING...' : `SAVE ${activeCatEdit.toUpperCase()} IMAGE`}
+              </button>
             </div>
           </motion.div>
         )}
@@ -879,7 +927,9 @@ function ManageCard({ product, confirmDeleteId, onAskDelete, onConfirmDelete, on
         </AnimatePresence>
       </div>
       <div className="p-2.5 sm:p-3 flex items-center justify-between gap-1.5">
-        <span className="badge-boots text-[9px] sm:text-[10px]">Boots</span>
+        <span className={`${product.category === 'Jackets' ? 'badge-jackets' : 'badge-boots'} text-[9px] sm:text-[10px]`}>
+          {product.category}
+        </span>
         <button
           onClick={onAskDelete}
           title="Delete"

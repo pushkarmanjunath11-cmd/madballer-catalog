@@ -12,6 +12,11 @@ interface Props {
   index?: number
 }
 
+const BADGE: Record<string, string> = {
+  Boots:   'badge-boots',
+  Jackets: 'badge-jackets',
+}
+
 export default function ProductCard({ product, index = 0 }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const totalImages = 1 + (product.images?.length ?? 0)
@@ -40,7 +45,9 @@ export default function ProductCard({ product, index = 0 }: Props) {
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
           {/* Badge */}
-          <span className="absolute top-2.5 left-2.5 badge-boots">Boots</span>
+          <span className={`absolute top-2.5 left-2.5 ${BADGE[product.category] ?? 'badge-boots'}`}>
+            {product.category}
+          </span>
 
           {/* Multiple images badge */}
           {totalImages > 1 && (

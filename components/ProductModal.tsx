@@ -11,6 +11,11 @@ interface Props {
   onClose: () => void
 }
 
+const BADGE: Record<string, string> = {
+  Boots:   'badge-boots',
+  Jackets: 'badge-jackets',
+}
+
 export default function ProductModal({ product, onClose }: Props) {
   const allImages = [product.imageUrl, ...(product.images ?? [])].filter(Boolean)
   const [current, setCurrent] = useState(0)
@@ -95,7 +100,9 @@ export default function ProductModal({ product, onClose }: Props) {
 
           {/* Badge */}
           <div className="absolute top-3 left-3 z-10 pointer-events-none">
-            <span className="badge-boots">Boots</span>
+            <span className={BADGE[product.category] ?? 'badge-boots'}>
+              {product.category}
+            </span>
           </div>
 
           {/* Arrow navigation */}

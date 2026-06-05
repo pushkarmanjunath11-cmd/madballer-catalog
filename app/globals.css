@@ -134,6 +134,18 @@ a,
   border-radius: 9999px;
 }
 
+.badge-jackets {
+  background: rgba(139, 195, 230, 0.15);
+  border: 1px solid rgba(139, 195, 230, 0.4);
+  color: #8bc3e6;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+}
+
 /* ─── Marquee ─── */
 .marquee-track {
   display: flex;

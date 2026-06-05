@@ -8,7 +8,12 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(del components\\\\ImageUploadZone.tsx components\\\\UploadZone.tsx lib\\\\firebaseUpload.ts)"
+      "Bash(del components\\\\ImageUploadZone.tsx components\\\\UploadZone.tsx lib\\\\firebaseUpload.ts)",
+      "Bash(npx vercel *)",
+      "mcp__141a72c6-99e3-418d-9b1f-0881f8539985__deploy_to_vercel",
+      "Bash(dir \"%APPDATA%\\\\vercel\")",
+      "Bash(dir \"%USERPROFILE%\\\\.vercel\")",
+      "Bash(git commit -m 'Lighten mobile hero overlay: black/40 → zinc-700/25 so bg isn'\\\\''t pitch black *)"
     ]
   }
 }
