@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useMemo, useState } from 'react'
+import { useRef, useMemo, useState, useEffect } from 'react'
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Navbar from '@/components/Navbar'
@@ -8,6 +8,7 @@ import ProductCard from '@/components/ProductCard'
 import Footer from '@/components/Footer'
 import { useProductStore } from '@/lib/store'
 import { getWhatsAppLink, WA_DISPLAY } from '@/lib/whatsapp'
+import { Category } from '@/lib/store'
 
 const MARQUEE_ITEMS = [
   'BOOTS', 'PREMIUM', 'AUTHENTIC', 'LIMITED DROPS', 'FOOTBALL', 'MAD BALLERS', 'BALLER ZONE', 'TOP QUALITY',
@@ -38,11 +39,26 @@ export default function HomePage() {
     return shuffled.slice(0, Math.min(FEATURED_COUNT, shuffled.length))
   }, [products])
 
-  // Pagination — show 20 at a time
+  // Category filter
+  const [filterCat, setFilterCat] = useState<'all' | Category>('all')
+  const filteredProducts = filterCat === 'all'
+    ? products
+    : products.filter(p => p.category === filterCat)
+
+  // Pagination — show 20 at a time; reset when filter changes
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-  const visibleProducts = products.slice(0, visibleCount)
-  const hasMore = visibleCount < products.length
-  const remaining = products.length - visibleCount
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filterCat])
+  const visibleProducts = filteredProducts.slice(0, visibleCount)
+  const hasMore = visibleCount < filteredProducts.length
+  const remaining = filteredProducts.length - visibleCount
+
+  // Dynamic labels for the collection section
+  const SECTION_TITLE =
+    filterCat === 'all'               ? 'THE COLLECTION'
+    : filterCat === 'Boots'           ? 'ALL BOOTS'
+    :                                   'JACKETS & TRACKSUITS'
+  const ITEM_NOUN = filterCat === 'Boots' ? 'PAIR' : 'ITEM'
+  const ITEMS_NOUN = filterCat === 'Boots' ? 'PAIRS' : 'ITEMS'
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] overflow-x-hidden">
@@ -195,7 +211,7 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* ── ALL BOOTS ── */}
+      {/* ── COLLECTION ── */}
       <section id="boots" className="bg-[#0d0d0d] border-t border-white/[0.04] py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
@@ -203,32 +219,58 @@ export default function HomePage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-10 sm:mb-14"
+            className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8 sm:mb-10"
           >
             <div>
               <span className="text-chrome-600 text-xs tracking-[0.3em] uppercase block mb-2" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
                 — FULL COLLECTION —
               </span>
               <h2 className="chrome-text leading-none" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: 'clamp(36px, 7vw, 80px)', letterSpacing: '0.06em' }}>
-                ALL BOOTS
+                {SECTION_TITLE}
               </h2>
             </div>
             {!loading && (
               <span className="inline-flex items-center gap-2 text-chrome-500 text-sm" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                {products.length} {products.length === 1 ? 'PAIR' : 'PAIRS'} AVAILABLE
+                {filteredProducts.length} {filteredProducts.length === 1 ? ITEM_NOUN : ITEMS_NOUN} AVAILABLE
               </span>
             )}
           </motion.div>
+
+          {/* ── Category filter pills ── */}
+          {!loading && products.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-8 sm:mb-10">
+              {([
+                { key: 'all',               label: 'ALL' },
+                { key: 'Boots',             label: 'BOOTS' },
+                { key: 'Jackets/Tracksuit', label: 'JACKETS / TRACKSUITS' },
+              ] as { key: 'all' | Category; label: string }[]).map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilterCat(f.key)}
+                  className={`px-5 py-2 text-xs tracking-widest uppercase rounded-full border transition-all duration-200 ${
+                    filterCat === f.key
+                      ? 'bg-white text-black font-bold border-white'
+                      : 'border-white/20 text-chrome-400 hover:text-white hover:border-white/40'
+                  }`}
+                  style={{ fontFamily: 'Barlow Condensed, sans-serif' }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {loading ? (
             <div className="text-center text-chrome-600 text-sm tracking-widest animate-pulse py-14" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
               LOADING...
             </div>
-          ) : products.length === 0 ? (
+          ) : filteredProducts.length === 0 ? (
             <div className="text-center py-14">
-              <p className="text-5xl mb-4">👟</p>
-              <p className="text-chrome-500 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>NO BOOTS AVAILABLE YET</p>
+              <p className="text-5xl mb-4">{filterCat === 'Boots' ? '👟' : '🧥'}</p>
+              <p className="text-chrome-500 text-lg tracking-widest" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+                NO {filterCat === 'all' ? 'PRODUCTS' : filterCat.toUpperCase()} AVAILABLE YET
+              </p>
             </div>
           ) : (
             <>
@@ -245,7 +287,7 @@ export default function HomePage() {
                 {hasMore ? (
                   <>
                     <p className="text-chrome-600 text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                      Showing {visibleCount} of {products.length} boots
+                      Showing {visibleCount} of {filteredProducts.length} {filterCat === 'Boots' ? 'boots' : 'items'}
                     </p>
                     <motion.button
                       whileTap={{ scale: 0.97 }}
@@ -260,9 +302,9 @@ export default function HomePage() {
                     </motion.button>
                   </>
                 ) : (
-                  products.length > PAGE_SIZE && (
+                  filteredProducts.length > PAGE_SIZE && (
                     <p className="text-chrome-700 text-xs tracking-widest" style={{ fontFamily: 'Barlow Condensed, sans-serif' }}>
-                      All {products.length} boots shown
+                      All {filteredProducts.length} {filterCat === 'Boots' ? 'boots' : 'items'} shown
                     </p>
                   )
                 )}
